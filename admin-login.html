@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+<title>Microdyne Engineering — Admin Login</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;background:#0f1923;color:#e8edf2;min-height:100vh;display:flex;align-items:center;justify-content:center;}
+  .login-box{background:#162332;border:1px solid #2a4058;border-radius:16px;padding:40px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.4);}
+  .logo-area{text-align:center;margin-bottom:28px;}
+  .logo-area img{width:64px;height:64px;object-fit:contain;margin-bottom:12px;}
+  .logo-area h1{font-size:18px;font-weight:600;color:#e8edf2;}
+  .logo-area p{font-size:12px;color:#6b8299;margin-top:4px;}
+  .field{margin-bottom:18px;}
+  .field label{display:block;font-size:12px;font-weight:500;color:#9fb3c8;margin-bottom:6px;letter-spacing:0.3px;}
+  .field input{width:100%;padding:10px 14px;background:#1c2d3e;border:1px solid #2a4058;border-radius:8px;color:#e8edf2;font-size:14px;outline:none;transition:border 0.2s;}
+  .field input:focus{border-color:#3498db;}
+  .field input::placeholder{color:#4a6a84;}
+  .btn-login{width:100%;padding:11px;background:#3498db;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background 0.2s;margin-top:6px;}
+  .btn-login:hover{background:#217dbb;}
+  .error{color:#ec7063;font-size:12px;text-align:center;margin-top:12px;display:none;}
+  .back-link{text-align:center;margin-top:16px;}
+  .back-link a{color:#6b8299;font-size:12px;text-decoration:none;}
+  .back-link a:hover{color:#3498db;}
+</style>
+</head>
+<body>
+<div class="login-box">
+  <div class="logo-area">
+    <img src="/images/logo.webp" alt="Microdyne Engineering">
+    <h1>Admin Panel</h1>
+    <p>Microdyne Engineering — MicrodyneHunter v2</p>
+  </div>
+  <form onsubmit="doLogin(event)">
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="username" placeholder="Enter username" autocomplete="off" required>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="Enter password" required>
+    </div>
+    <button type="submit" class="btn-login">Login</button>
+  </form>
+  <div class="error" id="errorMsg">Invalid username or password</div>
+  <div class="back-link"><a href="/">&larr; Back to Dashboard</a></div>
+</div>
+
+<script>
+async function doLogin(e){
+  e.preventDefault();
+  const u = document.getElementById('username').value;
+  const p = document.getElementById('password').value;
+  const err = document.getElementById('errorMsg');
+  err.style.display='none';
+  try {
+    const r = await fetch('/api/admin/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username:u, password:p})
+    });
+    const d = await r.json();
+    if(d.token){
+      sessionStorage.setItem('admin_token', d.token);
+      window.location.href = '/admin/panel';
+    } else {
+      err.textContent = d.error || 'Invalid credentials';
+      err.style.display='block';
+    }
+  } catch(ex){
+    err.textContent = 'Connection error';
+    err.style.display='block';
+  }
+}
+</script>
+</body>
+</html>
