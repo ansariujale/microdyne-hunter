@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Form Outreach Orchestrator
+FlowLockHunter v2 — Form Outreach Orchestrator
 Manual-only: Start Batch for new leads, Restart for stuck processing forms.
 Stop halts either operation. No automatic retry.
 """
@@ -19,7 +19,7 @@ from modules.database import (
 )
 from modules.form_filler import run_form_filling, clean_website_url
 
-logger = logging.getLogger("microdynehunter.form_outreach")
+logger = logging.getLogger("flowlockhunter.form_outreach")
 
 
 # ═══════════════════════════════════════════════════════════════

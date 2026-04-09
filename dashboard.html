@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
-<title>MicrodyneHunter v2 — Command Center</title>
+<title>FlowLockHunter v2 — Command Center</title>
 <script>document.documentElement.setAttribute('data-theme',localStorage.getItem('mh-theme')||'dark');</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  /* ═══ Dark Theme (default) — Microdyne Engineering blue palette ═══ */
+  /* ═══ Dark Theme (default) — FlowLock Overseas blue palette ═══ */
   :root,[data-theme="dark"]{
     --bg:#0f1923;--surface:#162332;--surface2:#1c2d3e;--surface3:#23374a;
     --border:#2a4058;--border-light:#34506a;
@@ -375,34 +375,19 @@
 
   /* Live Pipeline */
   .live-pipeline{margin-bottom:24px;}
-  .live-pipeline-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;}
-  .live-pipeline-title{display:flex;align-items:center;gap:10px;}
-  .live-pipeline-title h2{font-size:18px;font-weight:800;}
-  .live-pipeline-title .status-chip{font-size:11px;font-family:'JetBrains Mono',monospace;padding:4px 12px;border-radius:20px;display:flex;align-items:center;gap:6px;}
-  .live-pipeline-title .status-chip.idle{background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);}
-  .live-pipeline-title .status-chip.running{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);}
-  .pipeline-flow{display:flex;gap:0;overflow:visible;margin-bottom:40px;border-bottom:2px solid var(--border);padding-bottom:0;}
+  .pipeline-flow{display:flex;gap:0;overflow:visible;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0;}
   .pipeline-node{flex:1;background:none;border:none;border-bottom:3px solid transparent;padding:0;position:relative;transition:all 0.3s ease;overflow:visible;min-width:0;}
   .pipeline-node.active{border-bottom-color:var(--green);background:var(--green-bg);}
   .pipeline-node.active .pn-header{color:var(--green);font-weight:700;}
-  .pipeline-node.active .pn-icon [data-lucide]{opacity:1;}
   .pipeline-node.active .pn-name{color:var(--green);}
-  .pipeline-node.done{border-bottom-color:var(--green);background:rgba(52,152,219,0.04);}
-  .pipeline-node.done .pn-header{color:var(--text);}
-  .pipeline-node.done .pn-name{color:var(--text-muted);}
+  .pipeline-node.done{border-bottom-color:var(--green);}
+  .pipeline-node.done .pn-header{color:var(--text-muted);}
   .pipeline-node.done .pn-status-dot{background:var(--green);}
-  .pipeline-node.done::after{content:'';position:absolute;top:50%;right:-1px;transform:translateY(-50%);font-size:10px;}
-  .pn-header{padding:14px 20px;border-bottom:none;display:flex;align-items:center;gap:8px;background:none;color:var(--text-dim);cursor:pointer;transition:all 0.2s;justify-content:center;}
-  .pn-header:hover{color:var(--text);}
+  .pn-header{padding:14px 20px;display:flex;align-items:center;gap:8px;background:none;color:var(--text-dim);transition:all 0.2s;justify-content:center;}
   .pn-icon{font-size:16px;display:flex;align-items:center;}
   .pn-name{font-size:13px;font-weight:600;white-space:nowrap;}
   .pn-status-dot{width:8px;height:8px;border-radius:50%;background:var(--surface3);flex-shrink:0;transition:background 0.3s;}
   .pn-status-dot.active{background:var(--green);animation:pulse 1.5s infinite;box-shadow:0 0 8px rgba(52,152,219,0.4);}
-
-  /* Pipeline hover popup */
-  .pn-body{display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:300px;max-height:280px;overflow-y:auto;
-    background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;z-index:50;
-    box-shadow:0 12px 40px rgba(0,0,0,0.5);font-size:12px;color:var(--text-dim);line-height:1.7;}
   .pipeline-node:hover .pn-body{display:block;}
   .pipeline-node:last-child .pn-body{left:auto;right:0;}
 
@@ -462,7 +447,7 @@
   }
 
   .ai-robot-icon:hover {
-    color: #3498db; /* Microdyne Primary Blue */
+    color: #3498db; /* FlowLock Primary Blue */
     animation: robot-float 2s ease-in-out infinite;
   }
 
@@ -632,8 +617,8 @@
 
 <!-- HEADER -->
 <div class="header">
-  <div class="logo" style="background:#fff;border-color:#3498db;padding:2px;"><img src="images/logo.webp" alt="Microdyne Hunter" style="width:24px;height:24px;object-fit:contain;"></div>
-  <div class="h-title">Microdyne Hunter <span>Command Center v2.0</span></div>
+  <div class="logo" style="background:#fff;border-color:#3498db;padding:2px;"><img src="images/logo.png" alt="FlowLock Hunter" style="width:24px;height:24px;object-fit:contain;"></div>
+  <div class="h-title">FlowLock Hunter <span>Command Center v2.0</span></div>
   <div class="h-right">
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme">
       <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -674,9 +659,7 @@
         <span class="icon"><i data-lucide="file-text"></i></span> Forms
         <span class="badge" id="navFormCount">0</span>
       </div>
-      <div class="nav-item" onclick="showPage('sequence')">
-        <span class="icon"><i data-lucide="repeat"></i></span> Sequences
-      </div>
+      <!-- Sequences removed -->
     </div>
     <div class="nav-section">
       <div class="nav-label">Intelligence</div>
@@ -735,11 +718,7 @@
               <span class="pn-name">Scrape</span>
               <span class="pn-status-dot" id="pnDot-scrape"></span>
             </div>
-            <div class="pn-body" id="pnBody-scrape">
-              <div class="pn-empty">Waiting to start...</div>
-            </div>
           </div>
-          <div class="pipeline-arrow" style="display:none;"></div>
           <!-- STORE -->
           <div class="pipeline-node" id="pipeNode-store">
             <div class="pn-header">
@@ -747,11 +726,7 @@
               <span class="pn-name">Store</span>
               <span class="pn-status-dot" id="pnDot-store"></span>
             </div>
-            <div class="pn-body" id="pnBody-store">
-              <div class="pn-empty">Waiting for leads...</div>
-            </div>
           </div>
-          <div class="pipeline-arrow" style="display:none;"></div>
           <!-- EMAIL -->
           <div class="pipeline-node" id="pipeNode-email">
             <div class="pn-header">
@@ -759,11 +734,7 @@
               <span class="pn-name">Email</span>
               <span class="pn-status-dot" id="pnDot-email"></span>
             </div>
-            <div class="pn-body" id="pnBody-email">
-              <div class="pn-empty">Waiting for emails...</div>
-            </div>
           </div>
-          <div class="pipeline-arrow" style="display:none;"></div>
           <!-- FORM -->
           <div class="pipeline-node" id="pipeNode-forms">
             <div class="pn-header">
@@ -771,20 +742,13 @@
               <span class="pn-name">Form</span>
               <span class="pn-status-dot" id="pnDot-forms"></span>
             </div>
-            <div class="pn-body" id="pnBody-forms">
-              <div class="pn-empty">Waiting for forms...</div>
-            </div>
           </div>
-          <div class="pipeline-arrow" style="display:none;"></div>
           <!-- REPORT -->
           <div class="pipeline-node" id="pipeNode-report">
             <div class="pn-header">
               <span class="pn-icon"><i data-lucide="bar-chart-2"></i></span>
               <span class="pn-name">Report</span>
               <span class="pn-status-dot" id="pnDot-report"></span>
-            </div>
-            <div class="pn-body" id="pnBody-report">
-              <div class="pn-empty">No report yet</div>
             </div>
           </div>
         </div>
@@ -908,10 +872,10 @@
       </div>
 
       <div class="card">
-        <h3>Sending Domain Health</h3>
+        <h3>Sending Email Accounts</h3>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Domain</th><th>Sent Today</th><th>Capacity</th><th>Open Rate</th><th>Health</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Email Account</th><th>Total Sent</th><th>Today</th><th>Capacity</th><th>Opens</th><th>Replies</th><th>Open %</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="domainTableBody"></tbody>
           </table>
         </div>
@@ -947,8 +911,8 @@
       </div>
 
       <div class="card">
-        <h3>Email Performance Over Time</h3>
-        <div class="chart-container"><canvas id="chartEmail"></canvas></div>
+        <h3>Email Performance Over Time <span style="font-size:11px;color:var(--text-dim);font-weight:400;margin-left:8px;">(Live — updates on every refresh)</span></h3>
+        <div class="chart-container" style="height:280px;"><canvas id="chartEmail"></canvas></div>
       </div>
     </div>
 
@@ -964,7 +928,7 @@
         <!-- Email table -->
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Recipient</th><th>Company</th><th>Country</th><th>Score</th><th>Subject</th><th>Stage</th><th>Status</th><th>Sent</th><th>Opened</th><th>Opens</th><th>Replied</th></tr></thead>
+            <thead><tr><th>Recipient</th><th>Company</th><th>Country</th><th>Score</th><th>Subject</th><th>Status</th><th>Sent</th><th>Opened</th><th>Opens</th><th>Device</th><th>Replied</th><th>Replied At</th></tr></thead>
             <tbody id="domainEmailsBody"></tbody>
           </table>
         </div>
@@ -1046,58 +1010,16 @@
     </div>
 
     <!-- ═══════ SEQUENCES ═══════ -->
-    <div class="page" id="page-sequence">
-      <div class="page-title">Follow-Up Sequences</div>
-      <div class="page-sub">4-email sequence over 14 days for non-responders</div>
+    <!-- Sequences page removed -->
 
-      <div class="stats-row">
-        <div class="stat-card green"><div class="stat-label">Stage 1 (Day 1)</div><div class="stat-value" id="seq1">0</div><div class="stat-change">Intro + Free Test</div></div>
-        <div class="stat-card blue"><div class="stat-label">Stage 2 (Day 3)</div><div class="stat-value" id="seq2">0</div><div class="stat-change">Quality Angle</div></div>
-        <div class="stat-card purple"><div class="stat-label">Stage 3 (Day 7)</div><div class="stat-value" id="seq3">0</div><div class="stat-change">Social Proof</div></div>
-        <div class="stat-card orange"><div class="stat-label">Stage 4 (Day 14)</div><div class="stat-value" id="seq4">0</div><div class="stat-change">Breakup</div></div>
-      </div>
-
-      <div class="card">
-        <h3>Sequence Flow</h3>
-        <div style="display:flex;gap:0;overflow-x:auto;padding:8px 0;">
-          <div style="flex:1;min-width:160px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px 0 0 10px;border-left:3px solid var(--green);">
-            <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;font-family:'JetBrains Mono',monospace;margin-bottom:6px;">Day 1</div>
-            <div style="font-size:12px;color:var(--text-muted);line-height:1.6;"><strong>Email #1</strong><br>Intro + USP + free test<br><br><strong>Form Fill</strong><br>Website contact form</div>
-          </div>
-          <div style="flex:1;min-width:160px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--blue);">
-            <div style="font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;font-family:'JetBrains Mono',monospace;margin-bottom:6px;">Day 3</div>
-            <div style="font-size:12px;color:var(--text-muted);line-height:1.6;"><strong>Email #2</strong><br>Quality angle<br>"High ASR CLI to [region]"</div>
-          </div>
-          <div style="flex:1;min-width:160px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--purple);">
-            <div style="font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;font-family:'JetBrains Mono',monospace;margin-bottom:6px;">Day 7</div>
-            <div style="font-size:12px;color:var(--text-muted);line-height:1.6;"><strong>Email #3</strong><br>Social proof<br>"Carrying X million min"</div>
-          </div>
-          <div style="flex:1;min-width:160px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:0 10px 10px 0;border-left:3px solid var(--orange);">
-            <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;font-family:'JetBrains Mono',monospace;margin-bottom:6px;">Day 14</div>
-            <div style="font-size:12px;color:var(--text-muted);line-height:1.6;"><strong>Email #4 (Final)</strong><br>Breakup<br>"No pressure, offer open"</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Sequence Performance</h3>
-        <div class="chart-container"><canvas id="chartSequence"></canvas></div>
-      </div>
-    </div>
+    <!-- Sequences page content removed -->
 
     <!-- ═══════ INTELLIGENCE ═══════ -->
     <div class="page" id="page-intelligence">
-      <div class="page-title">Pipeline Report</div>
+      <div class="page-title">Reports</div>
       <div class="page-sub">Live outreach summary — emails sent, forms filled, lead activity</div>
 
-      <!-- Summary Cards -->
-      <div class="stats-row" style="margin-bottom:20px;">
-        <div class="stat-card green"><div class="stat-label">Total Leads</div><div class="stat-value" id="rptTotalLeads">0</div></div>
-        <div class="stat-card blue"><div class="stat-label">Emails Sent</div><div class="stat-value" id="rptEmailsSent">0</div></div>
-        <div class="stat-card purple"><div class="stat-label">Forms Filled</div><div class="stat-value" id="rptFormsFilled">0</div></div>
-        <div class="stat-card orange"><div class="stat-label">Replies</div><div class="stat-value" id="rptReplies">0</div></div>
-        <div class="stat-card cyan"><div class="stat-label">Closed Deals</div><div class="stat-value" id="rptClosed">0</div></div>
-      </div>
+      <!-- Metrics cards removed -->
 
       <!-- Summary Text -->
       <div class="card" style="margin-bottom:16px;">
@@ -1255,62 +1177,47 @@
 
     <!-- ═══════ PIPELINE ═══════ -->
     <div class="page" id="page-pipeline">
-      <div class="page-title">Pipeline Controls</div>
-      <div class="page-sub">Run individual steps or the full daily pipeline</div>
+      <div class="page-title">Pipeline Flow</div>
+      <div class="page-sub">Active pipeline phases — use Start Agent on the dashboard to run</div>
 
-      <div class="alert alert-green" id="serverStatus">Connecting to agent server at localhost:8000...</div>
+      <div class="alert alert-green" id="serverStatus">Connected to agent server</div>
 
-      <div class="pipeline-steps">
-        <div class="pipeline-step idle" id="stepScrape" onclick="runStep('scrape')">
+      <div class="pipeline-steps" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+        <div class="pipeline-step idle" id="stepStore">
           <div class="step-status"></div>
-          <div class="step-icon"></div>
-          <div class="step-name">Scrape</div>
-          <div class="step-desc">Find 1,000 new unique leads</div>
+          <div class="step-icon" style="font-size:20px;margin-bottom:10px;">
+            <i data-lucide="database" style="width:22px;height:22px;color:var(--green);"></i>
+          </div>
+          <div class="step-name">Load Leads</div>
+          <div class="step-desc">Check existing leads in database</div>
         </div>
-        <div class="pipeline-step idle" id="stepQualify" onclick="runStep('qualify')">
+        <div class="pipeline-step idle" id="stepEmail">
           <div class="step-status"></div>
-          <div class="step-icon"></div>
-          <div class="step-name">Qualify</div>
-          <div class="step-desc">AI score & tag each lead</div>
+          <div class="step-icon" style="font-size:20px;margin-bottom:10px;">
+            <i data-lucide="mail" style="width:22px;height:22px;color:var(--blue);"></i>
+          </div>
+          <div class="step-name">Email Outreach</div>
+          <div class="step-desc">Send personalized emails to leads</div>
         </div>
-        <div class="pipeline-step idle" id="stepStore" onclick="runStep('store')">
+        <div class="pipeline-step idle" id="stepForms">
           <div class="step-status"></div>
-          <div class="step-icon"></div>
-          <div class="step-name">Store</div>
-          <div class="step-desc">Save to DB with dedup</div>
+          <div class="step-icon" style="font-size:20px;margin-bottom:10px;">
+            <i data-lucide="file-text" style="width:22px;height:22px;color:var(--purple);"></i>
+          </div>
+          <div class="step-name">Form Submission</div>
+          <div class="step-desc">Fill contact forms on websites</div>
         </div>
-        <div class="pipeline-step idle" id="stepEmail" onclick="runStep('email')">
+        <div class="pipeline-step idle" id="stepReport">
           <div class="step-status"></div>
-          <div class="step-icon"></div>
-          <div class="step-name">Email</div>
-          <div class="step-desc">Send 1,000 personalized emails</div>
-        </div>
-        <div class="pipeline-step idle" id="stepForms" onclick="runStep('forms')">
-          <div class="step-status"></div>
-          <div class="step-icon"></div>
-          <div class="step-name">Form Fill</div>
-          <div class="step-desc">Submit 1,000 contact forms</div>
-        </div>
-        <div class="pipeline-step idle" id="stepFollowup" onclick="runStep('followup')">
-          <div class="step-status"></div>
-          <div class="step-icon"></div>
-          <div class="step-name">Follow Up</div>
-          <div class="step-desc">Send sequence emails</div>
-        </div>
-        <div class="pipeline-step idle" id="stepReport" onclick="runStep('report')">
-          <div class="step-status"></div>
-          <div class="step-icon"></div>
+          <div class="step-icon" style="font-size:20px;margin-bottom:10px;">
+            <i data-lucide="bar-chart-2" style="width:22px;height:22px;color:var(--orange);"></i>
+          </div>
           <div class="step-name">Report</div>
-          <div class="step-desc">Generate intelligence report</div>
+          <div class="step-desc">Generate pipeline summary</div>
         </div>
       </div>
 
-      <div style="margin-top:20px;display:flex;gap:12px;">
-        <button class="btn btn-green" onclick="runFullPipeline()" style="font-size:14px;padding:12px 28px;">Run Full Pipeline</button>
-        <button class="btn" onclick="stopPipeline()">Stop</button>
-      </div>
-
-      <div class="card" style="margin-top:20px;">
+      <div class="card">
         <h3>Pipeline Log</h3>
         <div id="pipelineLog" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);max-height:300px;overflow-y:auto;line-height:1.8;"></div>
       </div>
@@ -1361,7 +1268,7 @@
           </div>
           <div class="setting-group">
             <div class="setting-label">Sender Email</div>
-            <input class="input" style="width:100%" id="settingSenderEmail" placeholder="sales@microdyneengineering.com" type="email">
+            <input class="input" style="width:100%" id="settingSenderEmail" placeholder="sales@flowlockoverseas.com" type="email">
           </div>
         </div>
         <button class="btn btn-green" onclick="saveApiKeys()" style="margin-top:12px;">Save API Keys</button>
@@ -1396,8 +1303,8 @@
           </div>
           <div class="setting-group">
             <div class="setting-label">Sending Domains</div>
-            <textarea class="input" style="width:100%;height:60px;resize:vertical;" id="settingDomains">gmail.com
-microdyneengineering.com</textarea>
+            <textarea class="input" style="width:100%;height:60px;resize:vertical;" id="settingDomains">sales@flowlockoverseas.com
+info@flowlockoverseas.com</textarea>
           </div>
         </div>
       </div>
@@ -1406,12 +1313,12 @@ microdyneengineering.com</textarea>
         <h3>Form Submission Content</h3>
         <div class="setting-group">
           <div class="setting-label">Form message sent to leads (Name, Contact, Subject & Message — all in one)</div>
-          <textarea class="input" style="width:100%;height:140px;resize:vertical;font-size:13px;line-height:1.6;" id="settingFormMessage">Name: Microdyne Engineering
+          <textarea class="input" style="width:100%;height:140px;resize:vertical;font-size:13px;line-height:1.6;" id="settingFormMessage">Name: FlowLock Overseas
 Contact: +91-9082121601
-Email: sales@microdyneengineering.com
+Email: sales@flowlockoverseas.com
 Subject: Manufacturer of Mechanical Seals, CNC Components & Precision Turned Parts
 
-We are Microdyne Engineering, a Mumbai-based manufacturer specializing in mechanical seals, CNC machined components, and precision turned parts. Our product range includes cartridge seals, single & multi spring seals, bellow seals (rubber, metal, PTFE), pump seals, and agitator seals — manufactured in SS316, SS304, Hastelloy, Silicon Carbide, Tungsten Carbide, Carbon, PTFE, and Viton. We also offer CNC machines and precision turned parts for industrial applications. Our seal repair and refurbishment services help reduce maintenance costs significantly. Contact us at sales@microdyneengineering.com or call +91-9082121601 for a free consultation and sample.</textarea>
+We are FlowLock Overseas, a Mumbai-based manufacturer specializing in mechanical seals, CNC machined components, and precision turned parts. Our product range includes cartridge seals, single & multi spring seals, bellow seals (rubber, metal, PTFE), pump seals, and agitator seals — manufactured in SS316, SS304, Hastelloy, Silicon Carbide, Tungsten Carbide, Carbon, PTFE, and Viton. We also offer CNC machines and precision turned parts for industrial applications. Our seal repair and refurbishment services help reduce maintenance costs significantly. Contact us at sales@flowlockoverseas.com or call +91-9082121601 for a free consultation and sample.</textarea>
         </div>
         <button class="btn btn-green" onclick="saveFormMessage()" style="margin-top:12px;">Save Form Content</button>
         <span id="formMsgSaveStatus" style="margin-left:12px;font-size:12px;color:var(--green);display:none;">Saved!</span>
@@ -1498,7 +1405,7 @@ We are Microdyne Engineering, a Mumbai-based manufacturer specializing in mechan
     </div>
     <div class="chat-header-info">
       <div class="chat-header-title">
-        <span>MicrodyneHunter Agent</span>
+        <span>FlowLockHunter Agent</span>
         <span class="online-dot" id="chatOnlineDot"></span>
       </div>
       <div class="chat-header-sub" id="chatHeaderSub">AI-powered command center</div>
@@ -1728,7 +1635,7 @@ const DEMO = {
   countries: ['UAE','UK','US','India','Germany','France','Netherlands','Nigeria','South Africa','Kenya','Saudi Arabia','Singapore'],
   types: ['chemical_plant','pharmaceutical','oil_gas','water_treatment','power_generation','oem_pump_manufacturer','food_processing','general_engineering'],
   sources: ['apollo','google_search','google_maps','directory','conference'],
-  domains: ['gmail.com','microdyneengineering.com'],
+  domains: ['gmail.com','flowlockoverseas.com'],
   names: ['John Smith','Ahmed Al-Mansoor','Priya Sharma','Carlos Garcia','Li Wei','Sarah Johnson','Mohammed Ali','Elena Petrova','David Kim','Fatima Hassan','James Wilson','Anita Desai','Robert Chen','Maria Lopez','Yusuf Ibrahim'],
   companies: ['SealTech Industries','PumpGuard Inc','GlobalSeals Ltd','PrecisionCNC Co','SealMaster','OmniSeal','RapidParts','FlowControl Systems','HydroSeal Pro','IntelliPump','SealNet','TrunkLine Engineering','SealMatrix','DigiMach','PureSeal','CNCware','PartsEdge','WaveSeal','LinkParts','PrimeSeal'],
 };
@@ -1812,7 +1719,15 @@ function showPage(name, el){
   if(name==='intelligence') { loadReportData(); }
   if(name==='sources') renderSources();
   if(name==='funnel') renderFunnel();
-  if(name==='email') renderEmailPage();
+  if(name==='email'){
+    renderEmailPage();
+    // Auto-refresh email page every 30s for real-time updates
+    if(window._emailRefreshInterval) clearInterval(window._emailRefreshInterval);
+    window._emailRefreshInterval = setInterval(()=>{
+      if(document.getElementById('page-email').classList.contains('active')) renderEmailPage();
+      else { clearInterval(window._emailRefreshInterval); window._emailRefreshInterval=null; }
+    }, 30000);
+  }
   if(name==='forms') renderFormsPage();
   if(name==='sequence') { renderSequencePage(); loadSequenceTable(); }
 }
@@ -2314,7 +2229,7 @@ function renderLeads(){
   const tbody = document.getElementById('leadsTableBody');
   tbody.innerHTML = page.map(l=>{
     const scoreColor = l.score>=70?'var(--green)':l.score>=40?'var(--yellow)':'var(--red)';
-    const statusTag = l.closed?'<span class="tag tag-green">Closed</span>':l.interested?'<span class="tag tag-orange">Interested</span>':l.replied?'<span class="tag tag-blue">Replied</span>':l.email_sent?'<span class="tag tag-purple">Emailed</span>':'<span class="tag" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);">New</span>';
+    const statusTag = l.closed?'<span class="tag tag-green">Closed</span>':l.interested?'<span class="tag tag-orange">Interested</span>':l.replied?'<span class="tag tag-green">Replied</span>':l.email_sent?'<span class="tag tag-purple">Emailed</span>':'<span class="tag" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);">New</span>';
     const keywordDisplay = (l.keyword_used||'').replace(/\s+(UAE|UK|US|India|Germany|France|Netherlands|South Africa|Nigeria|Kenya|Saudi Arabia|Singapore|Malaysia|Philippines|Bangladesh|Pakistan|Turkey|Egypt|Ghana|Tanzania|Brazil|Mexico|Colombia)$/i,'');
     const webUrl = l.website_url || '';
     const webDisplay = webUrl ? '<a href="'+webUrl+'" target="_blank" style="color:var(--green);font-size:11px;text-decoration:none;" title="'+webUrl+'">'+(l.company_domain||webUrl.replace('https://','').replace('http://','').split('/')[0])+'</a>' : '<span style="color:var(--text-dim)">\u2014</span>';
@@ -2344,7 +2259,7 @@ function exportLeads(){
   const blob = new Blob([csv],{type:'text/csv'});
   const a = document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='microdynehunter_leads_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download='flowlockhunter_leads_'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
 }
 
@@ -2398,31 +2313,25 @@ async function renderEmailPage(){
       if(l.replied) domainMap[d].replied++;
     });
 
-    // 3. Merge warmup data with lead stats
+    // 3. Use warmup API data directly (shows per email account)
     const mergedDomains = [];
-    // Add domains from warmup API
     warmupData.forEach(w => {
-      const leadStats = domainMap[w.domain] || {sent:0,opened:0,replied:0};
       mergedDomains.push({
         domain: w.domain,
+        actualDomain: w.actual_domain || (w.domain.includes('@') ? w.domain.split('@').pop() : w.domain),
         sentToday: w.emails_sent || 0,
         dailyLimit: w.daily_limit || 65,
         remaining: w.remaining || 0,
         warmupDay: w.warmup_day || 1,
-        totalSent: leadStats.sent,
-        opened: leadStats.opened,
-        replied: leadStats.replied,
+        totalSent: w.total_sent || 0,
+        opened: w.opened || 0,
+        replied: w.replied || 0,
+        openRate: w.open_rate || 0,
+        replyRate: w.reply_rate || 0,
+        status: w.status || 'Ready',
       });
     });
-    // Add domains from leads that aren't in warmup data
-    Object.entries(domainMap).forEach(([d, stats]) => {
-      if(!mergedDomains.find(m => m.domain === d)){
-        mergedDomains.push({
-          domain: d, sentToday: stats.sent, dailyLimit: 65, remaining: 0,
-          warmupDay: 0, totalSent: stats.sent, opened: stats.opened, replied: stats.replied,
-        });
-      }
-    });
+    // Only show configured sending emails — do NOT auto-add from leads
 
     if(mergedDomains.length){
       document.getElementById('domainTableBody').innerHTML = mergedDomains.map(d => {
@@ -2458,51 +2367,141 @@ async function renderEmailPage(){
         const rowStyle = exceeded ? 'opacity:0.45;' : atLimit ? 'opacity:0.6;' : '';
 
         return `<tr class="fade-in" style="${rowStyle}">
-          <td style="color:var(--cyan);font-family:'JetBrains Mono',monospace">${d.domain}</td>
+          <td style="color:var(--green);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;">${d.domain}</td>
+          <td style="font-weight:600;">${d.totalSent}</td>
           <td>${d.sentToday}${exceeded ? ' <span style="color:var(--red);font-size:10px;">OVER</span>' : ''}</td>
-          <td><div class="score-bar" style="width:80px"><div class="score-fill" style="width:${barWidth}%;background:${barColor}"></div></div> ${d.sentToday}/${d.dailyLimit}</td>
+          <td><div class="score-bar" style="width:60px"><div class="score-fill" style="width:${barWidth}%;background:${barColor}"></div></div> ${d.sentToday}/${d.dailyLimit}</td>
+          <td style="color:var(--green);font-weight:600;">${d.opened||0}</td>
+          <td style="color:var(--orange);font-weight:600;">${d.replied||0}</td>
           <td>${openRate}%</td>
           <td><span class="tag ${healthTag}">${healthLabel}</span></td>
-          <td><button class="btn btn-sm btn-blue" onclick="viewDomainEmails('${d.domain}')">View Emails</button></td>
+          <td><button class="btn btn-sm btn-blue" onclick="viewDomainEmails('${d.actualDomain||d.domain.split('@').pop()}')">View Emails</button></td>
         </tr>`;
       }).join('');
     } else {
-      document.getElementById('domainTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:20px;">No emails sent yet</td></tr>';
+      document.getElementById('domainTableBody').innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:20px;">No emails sent yet</td></tr>';
     }
   } else {
-    document.getElementById('domainTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:20px;">Start the server to see email data</td></tr>';
+    document.getElementById('domainTableBody').innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:20px;">Start the server to see email data</td></tr>';
   }
 
   // Load sequence table (from outreach_log API for live data)
   await loadSequenceTableFast();
 
-  // Chart
-  // Build email chart from real lead data grouped by date
+  // Chart — fetch real-time data from API
+  await renderEmailChart();
+}
+
+async function renderEmailChart(){
+  // Fetch live data from report API for accurate real-time stats
+  const reportData = await api('/api/report-data');
+  if(!reportData || !reportData.leads) return;
+
   if(charts.email) charts.email.destroy();
+
   const emailByDate = {};
-  allLeads.filter(l=>l.email_sent && l.email_sent_at).forEach(l=>{
-    const d = l.email_sent_at.slice(0,10);
-    if(!emailByDate[d]) emailByDate[d] = {sent:0,opened:0,replied:0};
-    emailByDate[d].sent++;
-    if(l.email_opened) emailByDate[d].opened++;
-    if(l.replied) emailByDate[d].replied++;
+  reportData.leads.filter(l=>l.email_sent).forEach(l=>{
+    // Use email_sent_at, or created_at as fallback
+    const dateStr = (l.email_sent_at || l.created_at || '').slice(0,10);
+    if(!dateStr) return;
+    if(!emailByDate[dateStr]) emailByDate[dateStr] = {sent:0, opened:0, replied:0};
+    emailByDate[dateStr].sent++;
+    if(l.email_opened) emailByDate[dateStr].opened++;
+    if(l.replied) emailByDate[dateStr].replied++;
   });
+
   const sortedDates = Object.keys(emailByDate).sort();
   const last30 = sortedDates.slice(-30);
-  const dateLabels = last30.map(d=>{ const dt=new Date(d); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}); });
 
-  if(last30.length > 0){
-    const tc = getChartColors();
-    charts.email = new Chart(document.getElementById('chartEmail'),{
-      type:'line',
-      data:{labels:dateLabels,datasets:[
-        {label:'Sent',data:last30.map(d=>emailByDate[d].sent),borderColor:tc.blue,backgroundColor:tc.blue+'12',fill:true,tension:0.3,pointRadius:2},
-        {label:'Opened',data:last30.map(d=>emailByDate[d].opened),borderColor:tc.green,backgroundColor:tc.green+'12',fill:true,tension:0.3,pointRadius:2},
-        {label:'Replied',data:last30.map(d=>emailByDate[d].replied),borderColor:tc.orange,tension:0.3,pointRadius:2},
-      ]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:tc.legend,font:{size:11}}}},scales:{x:{ticks:{color:tc.label,font:{size:10}},grid:{color:tc.grid}},y:{ticks:{color:tc.label,font:{size:10}},grid:{color:tc.grid}}}}
-    });
+  if(last30.length === 0){
+    // Show empty state
+    const ctx = document.getElementById('chartEmail');
+    if(ctx) ctx.parentElement.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px;">No email data yet — send emails to see performance chart</div>';
+    return;
   }
+
+  const dateLabels = last30.map(d=>{
+    const dt = new Date(d);
+    return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+  });
+
+  const tc = getChartColors();
+  charts.email = new Chart(document.getElementById('chartEmail'),{
+    type:'line',
+    data:{
+      labels: dateLabels,
+      datasets:[
+        {
+          label:'Emails Sent',
+          data: last30.map(d=>emailByDate[d].sent),
+          borderColor: '#3498db',
+          backgroundColor: 'rgba(52,152,219,0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#3498db',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          borderWidth: 2,
+        },
+        {
+          label:'Opened',
+          data: last30.map(d=>emailByDate[d].opened),
+          borderColor: '#e67e22',
+          backgroundColor: 'rgba(230,126,34,0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#e67e22',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          borderWidth: 2,
+        },
+        {
+          label:'Replied',
+          data: last30.map(d=>emailByDate[d].replied),
+          borderColor: '#2ecc71',
+          backgroundColor: 'rgba(46,204,113,0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#2ecc71',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          borderWidth: 2,
+        },
+      ]
+    },
+    options:{
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins:{
+        legend:{
+          labels:{ color: tc.legend, font:{ size:12, weight:'600' }, padding: 16, usePointStyle: true, pointStyle: 'circle' }
+        },
+        tooltip:{
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          titleFont: { size: 13, weight: '600' },
+          bodyFont: { size: 12 },
+          padding: 12,
+          cornerRadius: 8,
+          displayColors: true,
+        }
+      },
+      scales:{
+        x:{
+          ticks:{ color: tc.label, font:{ size:11 } },
+          grid:{ color: tc.grid, drawBorder: false }
+        },
+        y:{
+          beginAtZero: true,
+          ticks:{ color: tc.label, font:{ size:11 }, stepSize: 1 },
+          grid:{ color: tc.grid, drawBorder: false }
+        }
+      }
+    }
+  });
 }
 
 function renderDemoDomainTable(){
@@ -2650,7 +2649,7 @@ async function loadSequenceTable(){ await loadSequenceTableFast(); }
 async function viewDomainEmails(domain){
   document.getElementById('modalDomainName').textContent = domain;
   document.getElementById('domainEmailModal').classList.add('show');
-  document.getElementById('domainEmailsBody').innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-dim);padding:20px;">Loading...</td></tr>';
+  document.getElementById('domainEmailsBody').innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-dim);padding:20px;">Loading...</td></tr>';
   document.getElementById('domainSummary').innerHTML = '';
 
   if(!serverConnected){
@@ -2667,6 +2666,7 @@ async function viewDomainEmails(domain){
     {label:'Open Rate',value:(s.open_rate||0)+'%',color:'cyan'},
     {label:'Replied',value:s.replied||0,color:'orange'},
     {label:'Reply Rate',value:(s.reply_rate||0)+'%',color:'purple'},
+    {label:'Failed',value:s.failed||0,color:'red'},
   ].map(c=>`<div class="stat-card ${c.color}" style="padding:12px 14px;">
     <div class="stat-label" style="font-size:9px;margin-bottom:4px;">${c.label}</div>
     <div class="stat-value" style="font-size:20px;">${c.value}</div>
@@ -2679,28 +2679,43 @@ async function viewDomainEmails(domain){
       const lead = e.lead||{};
       const tracking = e.tracking||{};
       const statusTag = e.delivery_status==='sent'?'tag-green':e.delivery_status==='recorded'?'tag-blue':'tag-red';
-      const sentDate = e.sent_at ? new Date(e.sent_at).toLocaleDateString() : '—';
-      const opened = tracking.opened ? '<span class="tag tag-green">Yes</span>' : '<span style="color:var(--text-dim)">No</span>';
+      const sentDate = e.sent_at ? new Date(e.sent_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+      const opened = tracking.opened ? '<span class="tag tag-green">Opened</span>' : '<span style="color:var(--text-dim);">Not yet</span>';
       const openCount = tracking.open_count || 0;
-      const replied = lead.replied ? '<span class="tag tag-green">Yes</span>' : '<span style="color:var(--text-dim)">No</span>';
+      const openedAt = tracking.opened_at ? new Date(tracking.opened_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+      // Device from user_agent
+      const ua = tracking.user_agent || '';
+      let device = '-';
+      if(ua){
+        if(ua.includes('iPhone') || ua.includes('Android') || ua.includes('Mobile')) device = 'Mobile';
+        else if(ua.includes('Windows')) device = 'Windows';
+        else if(ua.includes('Mac')) device = 'Mac';
+        else if(ua.includes('Linux')) device = 'Linux';
+        else if(ua.includes('Gmail') || ua.includes('Google')) device = 'Gmail';
+        else device = ua.substring(0,20);
+      }
+      const deviceBadge = tracking.opened ? '<span style="font-size:11px;color:var(--text-muted);">'+device+'</span>' : '<span style="color:var(--text-dim);">-</span>';
+      const replied = lead.replied ? '<span style="background:rgba(46,204,113,0.15);color:#2ecc71;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">Replied</span>' : '<span style="background:rgba(231,76,60,0.1);color:#e74c3c;padding:2px 8px;border-radius:4px;font-size:11px;">No</span>';
+      const repliedAt = lead.replied_at ? new Date(lead.replied_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
       const score = lead.score || 0;
       const scoreColor = score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
       return `<tr>
         <td style="font-size:11px">${lead.contact_email||'—'}</td>
-        <td>${lead.company_name||lead.company_domain||'—'}</td>
+        <td style="font-weight:600;">${lead.company_name||lead.company_domain||'—'}</td>
         <td>${lead.country||'—'}</td>
         <td><span style="color:${scoreColor};font-weight:700">${score}</span></td>
         <td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;" title="${(e.subject||'').replace(/"/g,'&quot;')}">${e.subject||'—'}</td>
-        <td><span class="tag ${stageColors[e.sequence_stage]||'tag-blue'}">${stageNames[e.sequence_stage]||'Stage '+(e.sequence_stage||1)}</span></td>
         <td><span class="tag ${statusTag}">${e.delivery_status||'—'}</span></td>
         <td style="font-size:10px;color:var(--text-dim)">${sentDate}</td>
         <td>${opened}</td>
         <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${openCount?'var(--green)':'var(--text-dim)'}">${openCount}</td>
+        <td>${deviceBadge}</td>
         <td>${replied}</td>
+        <td style="font-size:10px;color:var(--text-dim)">${repliedAt}</td>
       </tr>`;
     }).join('');
   } else {
-    document.getElementById('domainEmailsBody').innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-dim);padding:20px;">No emails sent from this domain yet</td></tr>';
+    document.getElementById('domainEmailsBody').innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-dim);padding:20px;">No emails sent from this domain yet</td></tr>';
   }
 }
 
@@ -2843,16 +2858,18 @@ async function renderFormsPage(){
         }
         if(!formPollInterval) formPollInterval = setInterval(renderFormsPage, 3000);
       } else {
+        const hasProcessing = counts && (counts.processing || 0) > 0;
         startBtn.style.display = '';
         stopBtn.style.display = 'none';
-        restartBtn.style.display = '';
-        const hasProcessing = counts && (counts.processing || 0) > 0;
-        if(status.finished_at){
+        // Show Restart button ONLY when status is Processing
+        restartBtn.style.display = hasProcessing ? '' : 'none';
+        if(hasProcessing){
+          statusEl.innerHTML = '<span style="color:var(--orange);font-weight:600;">Processing</span> — ' + counts.processing + ' forms in progress';
+        } else if(status.finished_at){
           const fin = new Date(status.finished_at);
-          statusEl.textContent = `Last run: ${fin.toLocaleTimeString()} — ${status.success} success, ${status.failed} failed` +
-            (hasProcessing ? ` (${counts.processing} stuck)` : '');
+          statusEl.textContent = `Last run: ${fin.toLocaleTimeString()} — ${status.success} success, ${status.failed} failed`;
         } else {
-          statusEl.textContent = hasProcessing ? `${counts.processing} forms stuck in processing` : 'Ready';
+          statusEl.textContent = 'Ready';
         }
         if(formPollInterval){ clearInterval(formPollInterval); formPollInterval = null; }
       }
@@ -2950,24 +2967,19 @@ async function loadReportData(){
   const data = await api('/api/report-data');
   if(!data || data.error) return;
 
-  // Update summary cards
-  document.getElementById('rptTotalLeads').textContent = (data.total||0).toLocaleString();
-  document.getElementById('rptEmailsSent').textContent = (data.emailed||0).toLocaleString();
-  document.getElementById('rptFormsFilled').textContent = (data.forms_filled||0).toLocaleString();
-  document.getElementById('rptReplies').textContent = (data.replies||0).toLocaleString();
-  document.getElementById('rptClosed').textContent = (data.closed||0).toLocaleString();
-
-  // Summary text
+  // Summary text (no card elements — use inline grid)
   const pct_email = data.total > 0 ? Math.round(data.emailed/data.total*100) : 0;
   const pct_form = data.total > 0 ? Math.round(data.forms_filled/data.total*100) : 0;
+  const pct_open = data.emailed > 0 ? Math.round((data.opened||0)/data.emailed*100) : 0;
+  const pct_reply = data.emailed > 0 ? Math.round(data.replies/data.emailed*100) : 0;
   document.getElementById('rptSummaryText').innerHTML =
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;">' +
-    '<div>Total leads in database: <strong style="color:var(--text);">' + data.total + '</strong></div>' +
-    '<div>Emails sent: <strong style="color:var(--green);">' + data.emailed + '</strong> (' + pct_email + '% of leads)</div>' +
-    '<div>Forms submitted: <strong style="color:var(--blue);">' + data.forms_filled + '</strong> (' + pct_form + '% of leads)</div>' +
-    '<div>Replies received: <strong style="color:var(--orange);">' + data.replies + '</strong></div>' +
-    '<div>Leads with any outreach: <strong style="color:var(--text);">' + data.outreached + '</strong></div>' +
-    '<div>Closed deals: <strong style="color:var(--cyan);">' + data.closed + '</strong></div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">' +
+    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--green);">Total leads: <strong style="color:var(--text);font-size:18px;">' + data.total + '</strong></div>' +
+    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--blue);">Emails sent: <strong style="color:var(--blue);font-size:18px;">' + data.emailed + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_email + '%)</span></div>' +
+    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--cyan);">Opened: <strong style="color:var(--cyan);font-size:18px;">' + (data.opened||0) + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_open + '%)</span></div>' +
+    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--purple);">Forms filled: <strong style="color:var(--purple);font-size:18px;">' + data.forms_filled + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_form + '%)</span></div>' +
+    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--orange);">Replies: <strong style="color:var(--orange);font-size:18px;">' + data.replies + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_reply + '%)</span></div>' +
+    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--green);">Outreached: <strong style="color:var(--text);font-size:18px;">' + data.outreached + '</strong></div>' +
     '</div>';
 
   _rptData = data.leads || [];
@@ -2993,10 +3005,11 @@ function applyReportFilters(){
     // Type filter
     if(type && l.lead_type !== type) return false;
 
-    // Date filter (dd-mm-yyyy picker gives yyyy-mm-dd)
-    if(dateFilter && l.created_at){
-      const leadDate = new Date(l.created_at).toISOString().split('T')[0];
-      if(leadDate !== dateFilter) return false;
+    // Date filter — check against any activity date (email_sent_at, form_last_attempted_at, or created_at)
+    if(dateFilter){
+      const dates = [l.created_at, l.email_sent_at, l.form_last_attempted_at, l.replied_at].filter(Boolean);
+      const matchesDate = dates.some(d => new Date(d).toISOString().split('T')[0] === dateFilter);
+      if(!matchesDate) return false;
     }
 
     // Search filter
@@ -3026,8 +3039,8 @@ function applyReportFilters(){
       ? '<span style="background:rgba(46,134,193,0.15);color:#2e86c1;padding:2px 8px;border-radius:4px;font-size:11px;">Filled</span>'
       : '<span style="color:var(--text-dim);font-size:11px;">-</span>';
     const repliedBadge = l.replied
-      ? '<span style="background:rgba(230,126,34,0.15);color:#e67e22;padding:2px 8px;border-radius:4px;font-size:11px;">Yes</span>'
-      : '<span style="color:var(--text-dim);font-size:11px;">No</span>';
+      ? '<span style="background:rgba(46,204,113,0.15);color:#2ecc71;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">Yes</span>'
+      : '<span style="background:rgba(231,76,60,0.1);color:#e74c3c;padding:2px 8px;border-radius:4px;font-size:11px;">No</span>';
     const date = l.created_at ? new Date(l.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-';
     const domain = l.company_domain || '-';
     const web = l.website_url ? '<a href="'+l.website_url+'" target="_blank" style="color:var(--green);font-size:11px;">'+domain+'</a>' : domain;
@@ -3073,7 +3086,7 @@ function downloadReportCSV(){
   const blob = new Blob([csv], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'microdyne_report_' + new Date().toISOString().split('T')[0] + '.csv';
+  a.download = 'flowlock_report_' + new Date().toISOString().split('T')[0] + '.csv';
   a.click();
 }
 
@@ -3081,11 +3094,13 @@ function downloadReportPDF(){
   const filtered = _rptData.filter(l => l.email_sent || l.form_filled);
   if(!filtered.length){ alert('No data to export'); return; }
 
-  const totalLeads = document.getElementById('rptTotalLeads').textContent;
-  const emailsSent = document.getElementById('rptEmailsSent').textContent;
-  const formsFilled = document.getElementById('rptFormsFilled').textContent;
-  const replies = document.getElementById('rptReplies').textContent;
-  const closed = document.getElementById('rptClosed').textContent;
+  // Get counts from filtered data (no card elements)
+  const allOutreached = _rptData.filter(l=>l.email_sent||l.form_filled);
+  const totalLeads = _rptData.length;
+  const emailsSent = _rptData.filter(l=>l.email_sent).length;
+  const formsFilled = _rptData.filter(l=>l.form_filled).length;
+  const replies = _rptData.filter(l=>l.replied).length;
+  const closed = _rptData.filter(l=>l.closed).length;
   const dateStr = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
 
   let tableRows = filtered.map((l,i) =>
@@ -3098,11 +3113,11 @@ function downloadReportPDF(){
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.email_sent?'Yes':'-')+'</td>' +
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.email_opened?'Opened':'-')+'</td>' +
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.form_filled?'Yes':'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.website_url||'-')+'</td>' +
+    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.replied?'Yes':'-')+'</td>' +
     '</tr>'
   ).join('');
 
-  const html = '<!DOCTYPE html><html><head><title>Microdyne Engineering — Pipeline Report</title>' +
+  const html = '<!DOCTYPE html><html><head><title>FlowLock Overseas — Pipeline Report</title>' +
     '<style>body{font-family:Arial,sans-serif;padding:40px;color:#2c3e50;} ' +
     'h1{color:#3498db;font-size:22px;margin-bottom:4px;} ' +
     '.sub{color:#7f8c8d;font-size:13px;margin-bottom:24px;} ' +
@@ -3113,7 +3128,7 @@ function downloadReportPDF(){
     'table{width:100%;border-collapse:collapse;margin-top:16px;} ' +
     'th{background:#3498db;color:#fff;padding:8px;font-size:11px;text-align:left;border:1px solid #217dbb;} ' +
     '</style></head><body>' +
-    '<h1>Microdyne Engineering — Pipeline Report</h1>' +
+    '<h1>FlowLock Overseas — Pipeline Report</h1>' +
     '<div class="sub">Generated on ' + dateStr + '</div>' +
     '<div class="summary">' +
     '<div class="summary-item"><div class="val">'+totalLeads+'</div><div class="lbl">Total Leads</div></div>' +
@@ -3123,9 +3138,9 @@ function downloadReportPDF(){
     '<div class="summary-item"><div class="val">'+closed+'</div><div class="lbl">Closed</div></div>' +
     '</div>' +
     '<table><thead><tr>' +
-    '<th>#</th><th>Company</th><th>Email</th><th>Country</th><th>Type</th><th>Email Sent</th><th>Opened</th><th>Form Filled</th><th>Website</th>' +
+    '<th>#</th><th>Company</th><th>Email</th><th>Country</th><th>Type</th><th>Email Sent</th><th>Opened</th><th>Form Filled</th><th>Replied</th>' +
     '</tr></thead><tbody>' + tableRows + '</tbody></table>' +
-    '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">Microdyne Engineering | MicrodyneHunter v2 | ' + dateStr + '</div>' +
+    '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">FlowLock Overseas | FlowLockHunter v2 | ' + dateStr + '</div>' +
     '</body></html>';
 
   const win = window.open('','_blank');
@@ -3378,12 +3393,13 @@ function renderIntelligenceFromAPI(segments){
 // SOURCES
 // ═══════════════════════════════════════════════════════════════
 async function renderSources(){
-  let sources;
+  let sources = [];
   if(serverConnected){
     const data = await api('/api/sources');
     if(data && data.sources) sources = data.sources;
+  } else {
+    sources = generateDemoSources();
   }
-  if(!sources) sources = generateDemoSources();
 
   document.getElementById('srcActive').textContent = sources.filter(s=>s.status==='active').length;
   document.getElementById('srcExhausted').textContent = sources.filter(s=>s.status==='exhausted').length;
@@ -3755,7 +3771,7 @@ async function pollStatus(){
   if(data.status==='running'){
     statusEl.textContent = 'Running: '+(data.current_step||'...');
     statusEl.parentElement.style.borderColor='var(--green)';
-    if(!agentRunning){ agentRunning=true; agentStartTime=agentStartTime||Date.now(); updateAgentUI(); }
+    if(!agentRunning){ agentRunning=true; agentStartTime=agentStartTime||Date.now(); window._pipelineAlreadyReset=false; resetPipelineUI(); updateAgentUI(); }
     if(data.current_step) updateMiniPipeline(data.current_step, 'running', data.completed_phases||[]);
     if(data.cycle) { currentCycle = data.cycle; document.getElementById('cycleNum').textContent = currentCycle; }
     // Update pipeline step UI
@@ -3770,20 +3786,29 @@ async function pollStatus(){
     statusEl.textContent = data.pipeline_running ? 'Pipeline queued' : 'Agent Idle';
     if(data.status==='idle' && !data.agent_loop_running){
       if(agentRunning){ agentRunning=false; updateAgentUI(); }
+      // Ensure pipeline is idle when agent is idle with no completed phases
+      if(!data.completed_phases || data.completed_phases.length === 0){
+        resetPipelineUI();
+        document.getElementById('heroStatus').innerHTML='Agent Idle';
+      }
     }
-    if(data.status==='completed' || (data.status==='idle' && data.completed_phases && data.completed_phases.length >= 3)){
-      document.querySelectorAll('.pipeline-step.running').forEach(el=>el.className='pipeline-step done');
+    if((data.status==='completed' || (data.status==='idle' && data.completed_phases && data.completed_phases.length >= 3)) && !window._pipelineAlreadyReset){
       ['scrape','store','email','forms','report'].forEach(n=>{
         const el=document.getElementById('pipeNode-'+n);
         const dot=document.getElementById('pnDot-'+n);
         if(el){el.className='pipeline-node done';dot.className='pn-status-dot';dot.style.background='var(--green)';}
       });
       document.getElementById('heroStatus').innerHTML='<span style="color:var(--green);font-weight:800;">All phases completed!</span>';
-      // Auto-reset button after 5 seconds
-      if(agentRunning){
+      // Show completed for 5 seconds, then reset pipeline to idle
+      if(agentRunning && !window._pipelineResetScheduled){
+        window._pipelineResetScheduled = true;
         setTimeout(()=>{
           agentRunning=false;
           updateAgentUI();
+          resetPipelineUI();
+          document.getElementById('heroStatus').innerHTML='Agent Idle';
+          window._pipelineResetScheduled = false;
+          window._pipelineAlreadyReset = true;
         }, 5000);
       }
     } else if(data.status==='idle'){
@@ -3977,6 +4002,8 @@ async function saveFormMessage(){
 // AGENT CONTROL (Start/Stop + Continuous Loop)
 // ═══════════════════════════════════════════════════════════════
 let agentRunning = false;
+window._pipelineAlreadyReset = true; // Start as reset — only show phases when agent runs
+window._pipelineResetScheduled = false;
 let agentStartTime = null;
 let runtimeTimer = null;
 let currentCycle = 0;
@@ -4077,20 +4104,16 @@ function updateMiniPipeline(step, status, completedPhases){
   nodeNames.forEach((n) => {
     const el = document.getElementById('pipeNode-'+n);
     const dot = document.getElementById('pnDot-'+n);
-    const body = document.getElementById('pnBody-'+n);
     if(!el) return;
 
     if(n === activeNode){
-      // Currently active — light highlight + pulse
       el.className='pipeline-node active';
       dot.className='pn-status-dot active';
     } else if(done.includes(n)){
-      // Completed — dark highlight
       el.className='pipeline-node done';
       dot.className='pn-status-dot';
       dot.style.background='var(--green)';
     } else {
-      // Waiting
       el.className='pipeline-node';
       dot.className='pn-status-dot';
       dot.style.background='';
@@ -4099,33 +4122,21 @@ function updateMiniPipeline(step, status, completedPhases){
 
   const labels = {
     scrape:'Scraping new leads...',
-    qualify:'Qualifying leads...',
     store:'Checking existing leads...',
     email:'Sending emails...',
     forms:'Filling contact forms...',
-    followup:'Sending follow-ups...',
     report:'Generating report...'
   };
 
-  const doneLabels = {
-    store:'Leads loaded',
-    email:'Emails sent',
-    forms:'Forms submitted',
-    report:'Report complete',
-    scrape:'Scraping done'
-  };
-
-  // Update body text for completed phases
-  done.forEach(n => {
-    const body = document.getElementById('pnBody-'+n);
-    if(body && doneLabels[n]) body.innerHTML = '<div style="color:var(--green);">'+doneLabels[n]+'</div>';
-  });
-
-  // Update body for active phase
-  const activeBody = document.getElementById('pnBody-'+activeNode);
-  if(activeBody) activeBody.innerHTML = '<div style="color:var(--green);animation:pulse 1.5s infinite;">Processing...</div>';
-
   heroStatus.innerHTML = (labels[step]||step);
+}
+
+function resetPipelineUI(){
+  ['scrape','store','email','forms','report'].forEach(n=>{
+    const el=document.getElementById('pipeNode-'+n);
+    const dot=document.getElementById('pnDot-'+n);
+    if(el){el.className='pipeline-node';dot.className='pn-status-dot';dot.style.background='';}
+  });
 }
 
 function demoAgentLoop(){
@@ -4201,6 +4212,17 @@ function toggleChat(){
     if(badge) badge.remove();
   }
 }
+
+// Close chat when clicking outside
+document.addEventListener('click', function(e){
+  if(!chatOpen) return;
+  const panel = document.getElementById('chatPanel');
+  const fab = document.getElementById('chatFab');
+  if(!panel.contains(e.target) && !fab.contains(e.target)){
+    chatOpen = false;
+    panel.classList.remove('open');
+  }
+});
 
 function toggleChatExpand(){
   chatExpanded = !chatExpanded;
@@ -4352,7 +4374,7 @@ async function sendChat(){
 
   // Notify user if chat panel is not visible or page is not focused
   if(!document.hasFocus() || !chatOpen){
-    _notifyUser('MicrodyneHunter Agent', reply.replace(/<[^>]*>/g,'').substring(0,120));
+    _notifyUser('FlowLockHunter Agent', reply.replace(/<[^>]*>/g,'').substring(0,120));
     // Show unread badge on FAB
     if(!chatOpen){
       const fab = document.getElementById('chatFab');
@@ -4467,13 +4489,92 @@ function appendAgentMsg(text){
   const el = document.createElement('div');
   el.className = 'chat-msg agent';
   const time = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+
+  // Check for PDF download trigger
+  let pdfBtn = '';
+  if(text && text.includes('[PDF_DOWNLOAD]')){
+    text = text.replace('[PDF_DOWNLOAD]', '');
+    pdfBtn = `<div style="margin-top:12px;"><button onclick="chatGeneratePDF(this)" style="background:linear-gradient(135deg,#3498db,#217dbb);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.2s;">
+      <span class="pdf-icon">&#128196;</span> Download PDF Report
+    </button></div>`;
+  }
+
   el.innerHTML = `
     <div class="chat-msg-avatar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2a5 5 0 0 1 5 5v3a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5z"/><path d="M17 10v1a5 5 0 0 1-10 0v-1"/></svg>
     </div>
-    <div class="chat-msg-bubble">${formatAgentReply(text)}<div class="chat-msg-meta">Agent &middot; ${time}</div></div>`;
+    <div class="chat-msg-bubble">${formatAgentReply(text)}${pdfBtn}<div class="chat-msg-meta">Agent &middot; ${time}</div></div>`;
   document.getElementById('chatMessages').appendChild(el);
   scrollChat();
+}
+
+function chatGeneratePDF(btn){
+  // Animated loading state
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<span style="display:inline-flex;gap:4px;"><span style="animation:pulse 0.6s infinite">&#9679;</span><span style="animation:pulse 0.6s 0.2s infinite">&#9679;</span><span style="animation:pulse 0.6s 0.4s infinite">&#9679;</span></span> Generating PDF...';
+  btn.style.opacity = '0.7';
+  btn.disabled = true;
+
+  setTimeout(()=>{
+    // Trigger the existing downloadReportPDF function
+    try {
+      // First load report data if not loaded
+      fetch('/api/report-data').then(r=>r.json()).then(data=>{
+        if(!data || !data.leads){ btn.innerHTML = 'No data'; return; }
+        const leads = data.leads.filter(l=>l.email_sent||l.form_filled);
+        if(!leads.length){ btn.innerHTML = 'No outreach data'; return; }
+
+        const dateStr = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+        let tableRows = leads.map((l,i)=>
+          '<tr>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(i+1)+'</td>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;font-weight:600;">'+(l.company_name||'-')+'</td>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.contact_email||'-')+'</td>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.country||'-')+'</td>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.score||0)+'</td>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;color:'+(l.email_sent?'#3498db':'#999')+';">'+(l.email_sent?'Sent':'-')+'</td>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;color:'+(l.email_opened?'#2ecc71':'#999')+';">'+(l.email_opened?'Opened':'-')+'</td>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;color:'+(l.form_filled?'#2e86c1':'#999')+';">'+(l.form_filled?'Filled':'-')+'</td>'+
+          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;color:'+(l.replied?'#e67e22':'#999')+';">'+(l.replied?'Replied':'-')+'</td>'+
+          '</tr>'
+        ).join('');
+
+        const html = '<!DOCTYPE html><html><head><title>FlowLock Overseas - Report</title>'+
+          '<style>body{font-family:Segoe UI,Arial,sans-serif;padding:40px;color:#2c3e50;}'+
+          'h1{color:#3498db;font-size:22px;margin-bottom:4px;}'+
+          '.sub{color:#7f8c8d;font-size:13px;margin-bottom:24px;}'+
+          '.summary{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap;}'+
+          '.s-item{background:#f0f7ff;border:1px solid #d6e9f8;border-radius:8px;padding:12px 20px;text-align:center;min-width:100px;}'+
+          '.s-item .v{font-size:22px;font-weight:700;color:#3498db;}.s-item .l{font-size:10px;color:#7f8c8d;margin-top:2px;}'+
+          'table{width:100%;border-collapse:collapse;margin-top:16px;}'+
+          'th{background:#3498db;color:#fff;padding:8px;font-size:11px;text-align:left;border:1px solid #217dbb;}</style></head><body>'+
+          '<h1>FlowLock Overseas - Pipeline Report</h1>'+
+          '<div class="sub">Generated on '+dateStr+'</div>'+
+          '<div class="summary">'+
+          '<div class="s-item"><div class="v">'+data.total+'</div><div class="l">Total Leads</div></div>'+
+          '<div class="s-item"><div class="v">'+data.emailed+'</div><div class="l">Emails Sent</div></div>'+
+          '<div class="s-item"><div class="v">'+(data.replies||0)+'</div><div class="l">Replies</div></div>'+
+          '<div class="s-item"><div class="v">'+data.forms_filled+'</div><div class="l">Forms Filled</div></div>'+
+          '</div>'+
+          '<table><thead><tr><th>#</th><th>Company</th><th>Email</th><th>Country</th><th>Score</th><th>Email</th><th>Opened</th><th>Form</th><th>Replied</th></tr></thead>'+
+          '<tbody>'+tableRows+'</tbody></table>'+
+          '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">FlowLock Overseas | FlowLockHunter v2 | '+dateStr+'</div>'+
+          '</body></html>';
+
+        const win = window.open('','_blank');
+        win.document.write(html);
+        win.document.close();
+        setTimeout(()=>{ win.print(); }, 600);
+
+        btn.innerHTML = '<span style="color:#2ecc71;">&#10003;</span> PDF Ready!';
+        btn.style.opacity = '1';
+        setTimeout(()=>{ btn.innerHTML = origText; btn.disabled = false; }, 3000);
+      });
+    } catch(e){
+      btn.innerHTML = 'Error: '+e.message;
+      btn.disabled = false;
+    }
+  }, 800);
 }
 
 function appendAgentWelcome(){
@@ -4641,7 +4742,7 @@ To find new leads, the agent scrapes from multiple sources:
 <div class="chat-data-card">
 <div class="chat-data-card-title">SENDING DOMAINS</div>
 <div class="chat-data-row"><span class="chat-data-label">gmail.com</span><span class="chat-data-value green">Active</span></div>
-<div class="chat-data-row"><span class="chat-data-label">microdyne.in</span><span class="chat-data-value green">Active</span></div>
+<div class="chat-data-row"><span class="chat-data-label">flowlock.in</span><span class="chat-data-value green">Active</span></div>
 <div class="chat-data-row"><span class="chat-data-label">Total Mailboxes</span><span class="chat-data-value">16</span></div>
 <div class="chat-data-row"><span class="chat-data-label">Daily Capacity</span><span class="chat-data-value blue">~1,040 emails</span></div>
 </div>
@@ -4858,7 +4959,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(() => {
     const bubble = document.getElementById('hiBubble');
     if (bubble) {
-      bubble.textContent = bubbleMessages[bubbleIndex];
+      bubble.textContent = bubbleMessages[bubbleIndex]; 
       bubbleIndex = (bubbleIndex + 1) % bubbleMessages.length;
     }
   }, 3000);

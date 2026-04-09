@@ -1,4 +1,4 @@
-# MicrodyneHunter v2 — AI Sales Agent for Microdyne Engineering
+# FlowLockHunter v2 — AI Sales Agent for FlowLock Overseas
 
 AI-powered sales agent that scrapes 1,000 leads/day, sends personalized cold emails, fills website contact forms, and auto-optimizes targeting based on what converts.
 
@@ -67,18 +67,18 @@ python main.py --schedule
 
 ## Multi-Domain Email Setup
 
-**Never send cold emails from microdyneengineering.com** — use outreach domains:
+**Never send cold emails from flowlockoverseas.com** — use outreach domains:
 
 | Domain          | Mailboxes | Emails/Day |
 |---------------|-----------|------------|
-| getmicrodyne.com | 2 | ~130 |
-| microdyne.io | 2 | ~130 |
-| microdyneseals.com | 2 | ~130 |
-| microdynecnc.com | 2 | ~130 |
-| trymicrodyne.com | 2 | ~130 |
-| microdyneindia.com | 2 | ~130 |
-| microdyneglobal.com | 2 | ~130 |
-| hellomicrodyne.com | 2 | ~130 |
+| getflowlock.com | 2 | ~130 |
+| flowlock.io | 2 | ~130 |
+| flowlockseals.com | 2 | ~130 |
+| flowlockcnc.com | 2 | ~130 |
+| tryflowlock.com | 2 | ~130 |
+| flowlockindia.com | 2 | ~130 |
+| flowlockglobal.com | 2 | ~130 |
+| helloflowlock.com | 2 | ~130 |
 | **TOTAL** | **16** | **~1,040/day** |
 
 Per domain setup:
@@ -86,7 +86,7 @@ Per domain setup:
 2. Set up 2 email accounts
 3. Add SPF: `v=spf1 include:_spf.hostinger.com include:_spf.instantly.ai ~all`
 4. Enable DKIM in Hostinger
-5. Add DMARC: `v=DMARC1; p=none; rua=mailto:dmarc@microdyneengineering.com; pct=100`
+5. Add DMARC: `v=DMARC1; p=none; rua=mailto:dmarc@flowlockoverseas.com; pct=100`
 6. Connect to Instantly and enable warmup
 7. Wait 2-3 weeks before sending cold emails
 
@@ -146,7 +146,7 @@ Leads are scored using a **dual-mode system**: AI-based scoring when an API key 
 
 When an AI provider is available, leads are evaluated 0-100 based on:
 1. Does their business need mechanical seals or CNC precision components?
-2. Are they in a country where Microdyne Engineering can supply competitively?
+2. Are they in a country where FlowLock Overseas can supply competitively?
 3. Is the contact person a decision-maker?
 4. Company size and relevance to industrial manufacturing
 

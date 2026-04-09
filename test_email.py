@@ -22,11 +22,11 @@ TO_EMAIL = SMTP_USER  # sends to yourself
 tracking_id = str(uuid.uuid4())
 pixel_url = f"{SUPABASE_URL}/functions/v1/track-email?id={tracking_id}"
 
-subject = "MicrodyneHunter Test - Email + Tracking Pixel"
-body_text = "This is a test email from MicrodyneHunter v2.\n\nIf you can read this, SMTP sending works!\n\nTracking pixel is embedded in the HTML version."
+subject = "FlowLockHunter Test - Email + Tracking Pixel"
+body_text = "This is a test email from FlowLockHunter v2.\n\nIf you can read this, SMTP sending works!\n\nTracking pixel is embedded in the HTML version."
 body_html = f"""
 <div style="font-family:Arial,sans-serif;font-size:14px;color:#333;">
-  <p>This is a <strong>test email</strong> from MicrodyneHunter v2.</p>
+  <p>This is a <strong>test email</strong> from FlowLockHunter v2.</p>
   <p>If you can read this, SMTP sending works!</p>
   <p style="color:#888;font-size:12px;">Tracking ID: {tracking_id}</p>
   <p style="color:#888;font-size:12px;">When you open this email, the tracking pixel fires to:<br>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MicrodyneHunter v2 — API Server
+FlowLockHunter v2 — API Server
 Serves the dashboard and exposes API endpoints to control the agent.
 Launch with: python server.py
 Dashboard opens at: http://localhost:8000
@@ -30,7 +30,7 @@ logging.basicConfig(
     datefmt="[%X]",
     handlers=[RichHandler(rich_tracebacks=True)],
 )
-logger = logging.getLogger("microdynehunter.server")
+logger = logging.getLogger("flowlockhunter.server")
 console = Console()
 
 # ═══════════════════════════════════════════════════════════════
@@ -39,7 +39,7 @@ console = Console()
 import hashlib, secrets
 
 ADMIN_CREDENTIALS = {
-    "username": "@Microdyne",
+    "username": "@Flowlock",
     "password": "@Microdyne31",
 }
 _admin_tokens = set()  # active session tokens
@@ -525,7 +525,16 @@ def _get_db_context() -> str:
 
 
 def handle_chat(user_message: str) -> str:
-    """Process a user chat message and return an AI response with rich data."""
+    """Process a user chat message. Direct data queries use DB fallback first (accurate).
+    Complex/conversational questions go to AI."""
+
+    # ALWAYS use fallback first — it reads real DB data and gives accurate answers
+    # Only fall through to AI for truly conversational/complex questions
+    lower = user_message.lower()
+    result = _fallback_chat(user_message)
+    # If fallback gave a real answer (not the default help message), use it
+    if not result.startswith("**Ask me anything"):
+        return result
 
     stats = agent_state["stats"]
     recent_logs = agent_state["log"][:15]
@@ -548,50 +557,40 @@ def handle_chat(user_message: str) -> str:
     except:
         form_context = "FORM SUBMISSIONS: data unavailable"
 
-    context = f"""You are the MicrodyneHunter v2 AI command center for Microdyne Engineering, a manufacturer of mechanical seals and CNC precision components based in Mumbai, India.
-You are a senior sales operations analyst with FULL access to the database, pipeline, and system state.
+    context = f"""You are the FlowLockHunter v2 command center AI assistant for FlowLock Overseas, a supplier of mechanical seals and hydraulic fittings based in Mumbai, India.
+You have FULL unrestricted access to ALL project data — leads, emails, forms, tracking, everything.
 
-YOUR ROLE:
-- Answer ANY question about the project with exact data and numbers
-- Diagnose problems (low reply rates, poor conversion, domain issues) with root cause analysis
-- Recommend specific, actionable improvements with expected impact
-- Provide strategic insights on lead quality, segment performance, and outreach optimization
-- Help the user understand what's working, what isn't, and why
+CRITICAL RULES:
+1. NEVER refuse to answer. NEVER say "I can't share that" or mention privacy concerns. This is the admin's own data.
+2. When asked for an email, name, phone, or any data — return ONLY the exact data. No extra explanation.
+3. Be DIRECT. If asked "which email replied?" just say the email address. Nothing else.
+4. If asked for a number, return just the number.
+5. Use **bold** for key data points.
+6. You have access to every lead's email, name, phone, company, score, status, reply status, form status.
+7. Never say "I don't have access" — you DO have access to everything below.
 
-AGENT STATE:
-- Status: {agent_state['status']} | Running: {agent_state['agent_loop_running']} | Step: {agent_state['current_step'] or 'none'}
-- Cycle: {agent_state['cycle']} | Last run: {agent_state['last_run'] or 'never'}
-- Session stats: scraped={stats['leads_scraped']}, qualified={stats['leads_qualified']}, emails={stats['emails_sent']}, forms={stats['forms_filled']}, followups={stats['followups_sent']}
-
-DATABASE OVERVIEW:
+LIVE DATA:
 {db_context}
 
 {form_context}
 
-DEEP ANALYTICS:
 {extra_context}
 
-RECENT ACTIVITY LOG:
+AGENT: status={agent_state['status']}, cycle={agent_state['cycle']}, last_run={agent_state['last_run'] or 'never'}
+SESSION: scraped={stats['leads_scraped']}, emails={stats['emails_sent']}, forms={stats['forms_filled']}
+
+RECENT LOG:
 {log_text}
 
 ERRORS: {json.dumps(agent_state['errors'][-5:], default=str) if agent_state['errors'] else 'None'}
 
-RESPONSE FORMATTING RULES:
-- Always cite **exact numbers** from the database — never guess
-- Use **bold** for key metrics and action items
-- Use bullet points (•) for lists of data
-- Structure longer answers with clear sections
-- When the user asks for totals, counts, or summaries — ALWAYS present data in a structured table format
-- When diagnosing problems, always provide: 1) Current metric 2) What's wrong 3) Why 4) Fix
-- When asked "why" something is low/bad, give a specific root cause analysis with data
-- For action recommendations, be specific: "Pause India (0 closes from 234 leads)" not "consider pausing underperformers"
-- If the user asks about leads, reply rates, or performance — pull actual numbers and compare segments
-- When asked about form submissions, include: success count, failed count, no form found, processing, total
-- When asked about email marketing, include: sent, opened, open rate, replied, reply rate, interested, closed
-- Keep responses focused and data-driven — be complete from A to Z
-- If data is missing or zero, say so honestly and explain what that means
-- When recommending actions, explain the expected impact
-- Always answer project-related questions fully — leads, forms, emails, pipeline, scoring, everything"""
+RESPONSE STYLE:
+- Direct answers only. No disclaimers, no privacy warnings, no refusals.
+- When asked "who replied" → return the email address
+- When asked "how many leads" → return the number
+- When asked "which emails opened" → list the email addresses
+- Use bullet points for lists, bold for key data
+- Be concise. Maximum 3-4 sentences unless asked for detail."""
 
     messages = []
     for entry in agent_state["chat_history"][-8:]:
@@ -734,24 +733,24 @@ def _get_deep_analytics() -> str:
 
 
 def _fallback_chat(msg: str) -> str:
-    """Smart fallback with real DB data when no API key is available."""
+    """Smart fallback — pulls real DB data and gives direct answers."""
     lower = msg.lower()
     stats = agent_state["stats"]
 
-    # Try to get real DB numbers even without AI
-    db_nums = {"total": 0, "emailed": 0, "replied": 0, "closed": 0, "reply_rate": "0", "forms": 0, "form_success": 0, "form_failed": 0}
+    # Load full lead data for answering any question
+    all_leads = []
+    db_nums = {"total": 0, "emailed": 0, "replied": 0, "closed": 0, "opened": 0, "reply_rate": "0", "forms": 0, "form_success": 0, "form_failed": 0}
     try:
         from modules.database import db, get_form_outreach_counts
         if db:
-            all_l = db.select("leads", columns="email_sent,replied,closed", limit=10000)
-            if all_l:
-                db_nums["total"] = len(all_l)
-                db_nums["emailed"] = sum(1 for l in all_l if l.get("email_sent"))
-                db_nums["replied"] = sum(1 for l in all_l if l.get("replied"))
-                db_nums["closed"] = sum(1 for l in all_l if l.get("closed"))
-                if db_nums["emailed"] > 0:
-                    db_nums["reply_rate"] = str(round(db_nums["replied"] / db_nums["emailed"] * 100, 1))
-            # Form data
+            all_leads = db.select("leads", columns="company_name,contact_email,contact_name,contact_phone,country,lead_type,score,email_sent,email_opened,replied,replied_at,reply_source,form_filled,closed,website_url,sending_domain", limit=10000)
+            db_nums["total"] = len(all_leads)
+            db_nums["emailed"] = sum(1 for l in all_leads if l.get("email_sent"))
+            db_nums["replied"] = sum(1 for l in all_leads if l.get("replied"))
+            db_nums["opened"] = sum(1 for l in all_leads if l.get("email_opened"))
+            db_nums["closed"] = sum(1 for l in all_leads if l.get("closed"))
+            if db_nums["emailed"] > 0:
+                db_nums["reply_rate"] = str(round(db_nums["replied"] / db_nums["emailed"] * 100, 1))
             try:
                 fc = get_form_outreach_counts()
                 db_nums["form_success"] = fc.get("success", 0)
@@ -762,102 +761,230 @@ def _fallback_chat(msg: str) -> str:
     except:
         pass
 
-    if "status" in lower or "report" in lower or ("how" in lower and "going" in lower):
+    # PROJECT IDENTITY — answer about the app/project itself
+    if ("project" in lower and "name" in lower) or ("app" in lower and "name" in lower) or ("what is this" in lower):
+        return "**FlowLockHunter v2** — AI Sales Agent for FlowLock Overseas"
+
+    if "who made" in lower or "who built" in lower or "who created" in lower or "developer" in lower:
+        return "**FlowLockHunter v2** — built for FlowLock Overseas, Mumbai, India"
+
+    if ("company" in lower and "name" in lower) and ("my" in lower or "our" in lower):
+        return "**FlowLock Overseas** — Mechanical Seals & Hydraulic Fittings, Mumbai"
+
+    if "version" in lower:
+        return "**FlowLockHunter v2.0**"
+
+    # DIRECT DATA QUERIES — return exact data, no fluff
+    # Who replied / which email replied
+    if ("who" in lower or "which" in lower) and "repl" in lower:
+        replied_leads = [l for l in all_leads if l.get("replied")]
+        if replied_leads:
+            emails = "\n".join(f"• **{l['contact_email']}** ({l.get('company_name','?')})" for l in replied_leads)
+            return f"{emails}"
+        return "No replies yet."
+
+    # Who opened / which email opened
+    if ("who" in lower or "which" in lower) and "open" in lower:
+        opened_leads = [l for l in all_leads if l.get("email_opened")]
+        if opened_leads:
+            emails = "\n".join(f"• **{l['contact_email']}** ({l.get('company_name','?')})" for l in opened_leads)
+            return f"{emails}"
+        return "No opens tracked yet."
+
+    # Which email was sent / who was emailed
+    if ("who" in lower or "which" in lower) and ("sent" in lower or "email" in lower):
+        emailed = [l for l in all_leads if l.get("email_sent")]
+        if emailed:
+            emails = "\n".join(f"• **{l['contact_email']}** ({l.get('company_name','?')}) — score: {l.get('score',0)}" for l in emailed)
+            return f"{emails}"
+        return "No emails sent yet."
+
+    # Reply from / reply email
+    if "reply" in lower and ("from" in lower or "email" in lower or "who" in lower):
+        replied_leads = [l for l in all_leads if l.get("replied")]
+        if replied_leads:
+            return "\n".join(f"**{l['contact_email']}**" for l in replied_leads)
+        return "No replies yet."
+
+    # Hot leads — MUST be before "how many leads"
+    if "hot" in lower and "lead" in lower:
+        from modules.database import get_hot_leads
+        hot = get_hot_leads()
+        if hot:
+            rows = []
+            for i, l in enumerate(hot[:15], 1):
+                status_lbl = "REPLIED" if l.get("replied") else "OPENED" if l.get("email_opened") else "INTERESTED" if l.get("interested") else "NEW"
+                rows.append(f"**{i}. {l.get('company_name','?')}**\n   Email: {l.get('contact_email','?')} | Score: **{l.get('score',0)}** | Country: {l.get('country','?')} | Status: {status_lbl}")
+            return f"**{len(hot)} Hot Leads:**\n\n" + "\n\n".join(rows)
+        return "**0 hot leads** right now. Hot leads = replied, opened with score 70+, or interested."
+
+    # Status / how's it going
+    if "status" in lower or ("how" in lower and "going" in lower):
         status = f"running (cycle {agent_state['cycle']})" if agent_state["agent_loop_running"] else "idle"
-        return (f"**Agent Status: {status.upper()}**\n\n"
-                f"**Database Totals:**\n"
-                f"• Total leads: **{db_nums['total']:,}**\n"
-                f"• Emails sent: **{db_nums['emailed']:,}**\n"
-                f"• Forms submitted: **{db_nums['forms']:,}** ({db_nums['form_success']} success, {db_nums['form_failed']} failed)\n"
-                f"• Replies: **{db_nums['replied']:,}** ({db_nums['reply_rate']}% reply rate)\n"
-                f"• Closed deals: **{db_nums['closed']:,}**\n\n"
-                f"**Session Stats:**\n"
-                f"• Scraped: {stats['leads_scraped']} | Qualified: {stats['leads_qualified']}\n"
-                f"• Emails: {stats['emails_sent']} | Forms: {stats['forms_filled']}\n"
-                f"• Follow-ups: {stats['followups_sent']}")
-
-    if "reply" in lower and ("low" in lower or "why" in lower or "improve" in lower):
-        return (f"**Reply Rate Analysis**\n\n"
-                f"Current reply rate: **{db_nums['reply_rate']}%** ({db_nums['replied']} replies from {db_nums['emailed']} emails)\n\n"
-                f"**Common causes for low reply rates:**\n"
-                f"1. **Domain health** — Rotate domains below 10% open rate\n"
-                f"2. **Lead quality** — Increase score threshold above 40\n"
-                f"3. **Email content** — Check personalization scores on variants\n"
-                f"4. **Follow-ups missing** — Most replies come from email #2 or #3\n"
-                f"5. **Wrong segments** — Pause countries with 0 closes after 200+ leads\n\n"
-                f"**Quick fixes:** Run follow-up sequences, use dual-channel (email+form for 2x reply rate), focus on Chemical Plants and OEM Pump Manufacturers.\n\n"
-                f"Add your API key for AI-powered root cause analysis with your actual segment data.")
-
-    if "improve" in lower or "sales" in lower or "better" in lower:
-        return (f"**Performance Improvement Recommendations**\n\n"
-                f"Based on typical patterns ({db_nums['total']:,} leads, {db_nums['reply_rate']}% reply rate):\n\n"
-                f"1. **Segment analysis** — Pause countries with 0 closes after 200+ leads\n"
-                f"2. **Focus targeting** — Chemical Plants and OEM Pump Manufacturers convert best\n"
-                f"3. **Dual channel** — Email + form fill has 2x higher reply rate\n"
-                f"4. **Follow-up cadence** — 4 emails over 14 days, most replies on #2-3\n"
-                f"5. **Domain rotation** — Swap any domain under 10% open rate\n"
-                f"6. **Lead scoring** — Raise threshold to 50+ for better quality\n\n"
-                f"Check the Intelligence tab for real segment data.")
-
-    if "start" in lower or "run" in lower:
-        if agent_state["agent_loop_running"]:
-            return f"**Agent is already running** on cycle {agent_state['cycle']}. It will keep processing until you stop it."
-        return ("**Ready to start.** The agent will run: Scrape → Qualify → Email → Forms → Follow-up → Report in a loop every hour.\n\n"
-                "Use the /start command or click START AGENT on the dashboard.")
-
-    if "stop" in lower:
-        if not agent_state["agent_loop_running"]:
-            return "**Agent is already stopped.** Use /start or click START AGENT to begin."
-        return "**Stopping...** Use the /stop command or click STOP AGENT. It will finish the current step gracefully."
-
-    if "lead" in lower and ("find" in lower or "get" in lower or "new" in lower or "scrape" in lower):
-        return (f"**Lead Generation**\n\n"
-                f"Current database: **{db_nums['total']:,} leads**\n\n"
-                f"Sources available:\n"
-                f"• Google Maps (Apify) — primary source\n"
-                f"• Apollo.io — best email quality\n"
-                f"• Google Search — directory scraping\n\n"
-                f"Daily target: 1,000 leads. Use /run scrape to run the scraper or /start to begin the full pipeline.")
-
-    if ("total" in lower and "lead" in lower) or ("how many" in lower and "lead" in lower):
-        return (f"**Total Leads: {db_nums['total']:,}**\n\n"
-                f"• Emailed: **{db_nums['emailed']:,}**\n"
-                f"• Forms submitted: **{db_nums['forms']:,}** ({db_nums['form_success']} success, {db_nums['form_failed']} failed)\n"
-                f"• Replied: **{db_nums['replied']:,}** ({db_nums['reply_rate']}% rate)\n"
+        return (f"**Agent: {status.upper()}**\n"
+                f"• Leads: **{db_nums['total']:,}** | Emailed: **{db_nums['emailed']:,}** | Opened: **{db_nums['opened']:,}**\n"
+                f"• Replied: **{db_nums['replied']:,}** ({db_nums['reply_rate']}%) | Forms: **{db_nums['forms']:,}**\n"
                 f"• Closed: **{db_nums['closed']:,}**")
 
-    if "form" in lower and ("total" in lower or "how many" in lower or "status" in lower or "submission" in lower or "count" in lower):
-        return (f"**Form Submission Totals**\n\n"
-                f"• Submitted successfully: **{db_nums['form_success']:,}**\n"
-                f"• Failed: **{db_nums['form_failed']:,}**\n"
-                f"• Total completed: **{db_nums['forms']:,}**\n\n"
-                f"Go to the Forms page to see details and use Restart to retry stuck forms.")
+    # How many leads / total leads
+    if ("total" in lower or "how many" in lower or "count" in lower) and "lead" in lower:
+        return f"**{db_nums['total']:,}** leads"
 
-    if "email" in lower and ("total" in lower or "how many" in lower or "sent" in lower or "count" in lower):
-        return (f"**Email Marketing Totals**\n\n"
-                f"• Emails sent: **{db_nums['emailed']:,}**\n"
-                f"• Replied: **{db_nums['replied']:,}** ({db_nums['reply_rate']}% reply rate)\n"
-                f"• Closed from email: **{db_nums['closed']:,}**\n\n"
-                f"8 sending domains, 16 mailboxes, ~1,040/day capacity. 4-stage follow-up over 14 days.")
+    # How many emails sent
+    if ("how many" in lower or "total" in lower) and ("email" in lower or "sent" in lower):
+        return f"**{db_nums['emailed']:,}** emails sent"
 
+    # How many forms
+    if ("how many" in lower or "total" in lower) and "form" in lower:
+        return f"**{db_nums['forms']:,}** forms ({db_nums['form_success']} success, {db_nums['form_failed']} failed)"
+
+    # How many replies
+    if ("how many" in lower or "total" in lower) and "repl" in lower:
+        return f"**{db_nums['replied']:,}** replies ({db_nums['reply_rate']}% rate)"
+
+    # How many opened
+    if ("how many" in lower or "total" in lower) and "open" in lower:
+        return f"**{db_nums['opened']:,}** emails opened"
+
+    # List all leads
+    if "list" in lower and "lead" in lower:
+        if all_leads:
+            rows = "\n".join(f"• **{l['company_name']}** — {l.get('contact_email','?')} ({l.get('country','?')}) score={l.get('score',0)}" for l in all_leads[:20])
+            return f"**{db_nums['total']} leads:**\n{rows}"
+        return "No leads in database."
+
+    # Form status
+    if "form" in lower:
+        return (f"**Forms:** {db_nums['form_success']} success, {db_nums['form_failed']} failed, {db_nums['forms']} total")
+
+    # Email stats
+    if "email" in lower:
+        return (f"**Emails:** {db_nums['emailed']} sent, {db_nums['opened']} opened, {db_nums['replied']} replied ({db_nums['reply_rate']}% rate)")
+
+    # Error check
     if "error" in lower:
         errors = agent_state["errors"][-5:] if agent_state["errors"] else []
         if errors:
-            error_text = "\n".join(f"• [{e.get('time','?')}] {e.get('msg','Unknown error')}" for e in errors)
-            return f"**Recent Errors ({len(errors)}):**\n\n{error_text}"
-        return "**No errors recorded** in this session."
+            return "\n".join(f"• {e.get('msg','?')}" for e in errors)
+        return "No errors."
 
-    return (f"**MicrodyneHunter Command Center**\n\n"
-            f"I can help with:\n"
-            f"• **Status** — Full pipeline and project report\n"
-            f"• **Total leads** — How many leads, emails, forms\n"
-            f"• **Form submissions** — Success, failed, totals\n"
-            f"• **Email marketing** — Sent, replied, rates\n"
-            f"• **Reply rates** — Why they're low and how to fix\n"
-            f"• **Segments** — Which countries/types perform best\n"
-            f"• **Actions** — Start/stop agent, run pipeline steps\n\n"
-            f"Type /help to see all slash commands or ask anything in plain English.\n\n"
-            f"DB: {db_nums['total']:,} leads | {db_nums['emailed']:,} emailed | {db_nums['forms']:,} forms | {db_nums['reply_rate']}% reply rate")
+    # Dashboard / sections / features
+    if "dashboard" in lower or "section" in lower or "feature" in lower or "what" in lower and ("have" in lower or "app" in lower or "this" in lower):
+        return ("**Yes! This app has these sections:**\n"
+                "• **Dashboard** — Overview with stats, pipeline phases, hot leads, live activity\n"
+                "• **Leads** — Full lead database with filters (country, type, score, date)\n"
+                "• **Email** — Email outreach, domain health, sequence tracker, open tracking\n"
+                "• **Forms** — Contact form filling with batch controls and status tracking\n"
+                "• **Reports** — Pipeline report with filters, export PDF/CSV\n"
+                "• **Sources** — Keyword/source tracking for lead scraping\n"
+                "• **Funnel** — Sales funnel analytics with charts\n"
+                "• **Pipeline** — Phase flow visualization (Store → Email → Forms → Report)\n"
+                "• **Admin Panel** — API keys, email config, form content, credentials (/admin)")
+
+    # Hot leads
+    # (hot leads already handled above)
+
+    # Report / PDF
+    if "report" in lower or "pdf" in lower or "summary" in lower:
+        # Build full report data
+        emailed_leads = [l for l in all_leads if l.get("email_sent")]
+        formed_leads = [l for l in all_leads if l.get("form_filled")]
+        opened_leads = [l for l in all_leads if l.get("email_opened")]
+        replied_leads = [l for l in all_leads if l.get("replied")]
+        outreached = [l for l in all_leads if l.get("email_sent") or l.get("form_filled")]
+
+        report_text = f"**Pipeline Report**\n\n"
+        report_text += f"• Total Leads: **{db_nums['total']}**\n"
+        report_text += f"• Emails Sent: **{db_nums['emailed']}** | Opened: **{db_nums['opened']}** | Replied: **{db_nums['replied']}**\n"
+        report_text += f"• Forms Filled: **{db_nums['form_success']}**\n"
+        report_text += f"• Open Rate: **{round(db_nums['opened']/db_nums['emailed']*100,1) if db_nums['emailed'] else 0}%** | Reply Rate: **{db_nums['reply_rate']}%**\n\n"
+
+        if outreached:
+            report_text += "**Outreach Details:**\n"
+            for i, l in enumerate(outreached[:20], 1):
+                e_status = "Sent" if l.get("email_sent") else "-"
+                o_status = "Opened" if l.get("email_opened") else "-"
+                f_status = "Filled" if l.get("form_filled") else "-"
+                r_status = "Replied" if l.get("replied") else "-"
+                report_text += f"{i}. **{l.get('company_name','?')}** | {l.get('contact_email','?')} | Email: {e_status} | Open: {o_status} | Form: {f_status} | Reply: {r_status}\n"
+
+        if "pdf" in lower or "download" in lower or "convert" in lower:
+            report_text += "\n\n[PDF_DOWNLOAD]"
+
+        return report_text
+
+    # Pipeline / agent / phases
+    if "pipeline" in lower or "phase" in lower or "agent" in lower:
+        status = "running" if agent_state["agent_loop_running"] else "idle"
+        phases = agent_state.get("completed_phases", [])
+        phase_text = ", ".join(phases) if phases else "none"
+        return (f"**Pipeline: {status.upper()}**\n"
+                f"• Phases: Store → Email → Forms → Report\n"
+                f"• Completed: {phase_text}\n"
+                f"• Current: {agent_state.get('current_step') or 'none'}\n"
+                f"• Last run: {agent_state.get('last_run') or 'never'}")
+
+    # Score / scoring
+    if "score" in lower or "scoring" in lower:
+        high = sum(1 for l in all_leads if (l.get("score") or 0) >= 70)
+        mid = sum(1 for l in all_leads if 40 <= (l.get("score") or 0) < 70)
+        low = sum(1 for l in all_leads if (l.get("score") or 0) < 40)
+        return f"**Lead Scores:** {high} high (70+), {mid} qualified (40-69), {low} low (<40)\nMin score for outreach: **40**"
+
+    # Country
+    if "country" in lower or "countries" in lower:
+        countries = {}
+        for l in all_leads:
+            c = l.get("country", "Unknown")
+            countries[c] = countries.get(c, 0) + 1
+        if countries:
+            rows = "\n".join(f"• **{c}**: {n} leads" for c, n in sorted(countries.items(), key=lambda x: -x[1])[:10])
+            return f"**Leads by country:**\n{rows}"
+        return "No country data."
+
+    # Domain / sending
+    if "domain" in lower or "sending" in lower:
+        import config
+        emails = getattr(config, 'SENDING_EMAILS', config.SENDING_DOMAINS)
+        return f"**Sending accounts:** {', '.join(emails)}"
+
+    # Keywords
+    if "keyword" in lower:
+        import config
+        kws = config.SEARCH_KEYWORDS[:5]
+        return f"**Search keywords:** " + ", ".join(kw.replace(' {country}','') for kw in kws) + f" (+{len(config.SEARCH_KEYWORDS)-5} more)"
+
+    # Start / run
+    if "start" in lower or "run" in lower:
+        if agent_state["agent_loop_running"]:
+            return f"**Agent already running** — cycle {agent_state['cycle']}"
+        return "**Agent is idle.** Click START AGENT on the dashboard to run the pipeline."
+
+    # Stop
+    if "stop" in lower:
+        return "**Agent is idle.** Nothing to stop." if not agent_state["agent_loop_running"] else "Click STOP on the dashboard."
+
+    # Help
+    if "help" in lower:
+        return ("**I can answer:**\n"
+                "• who replied / opened / was emailed\n"
+                "• how many leads / emails / forms\n"
+                "• hot leads\n"
+                "• status / pipeline / phases\n"
+                "• dashboard sections\n"
+                "• scores / countries / domains / keywords\n"
+                "• list leads\n"
+                "• errors")
+
+    # Default — show what I can answer
+    return (f"**Ask me anything about your data:**\n"
+            f"• \"who replied?\" → email addresses\n"
+            f"• \"which email opened?\" → opened leads\n"
+            f"• \"how many leads?\" → count\n"
+            f"• \"hot leads\" → priority leads\n"
+            f"• \"dashboard\" → all sections\n"
+            f"• \"status\" → pipeline report\n\n"
+            f"**Live:** {db_nums['total']} leads | {db_nums['emailed']} emailed | {db_nums['replied']} replied | {db_nums['forms']} forms")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -887,12 +1014,21 @@ def get_dashboard_data():
             _last_reply_check = now_ts
             try:
                 # Check if there are any emailed but unreplied leads
+                # Check email replies
                 unreplied = db.count("leads", {"email_sent": "eq.true", "replied": "eq.false"}) if db else 0
                 if unreplied > 0:
                     from modules.reply_tracker import check_replies
                     count = check_replies()
                     if count > 0:
-                        add_log(f"Reply detected: {count} new replies", category="email")
+                        add_log(f"Email reply detected: {count} new replies", category="email")
+
+                # Check form submission replies (domain matching)
+                unreplied_forms = db.count("leads", {"form_filled": "eq.true", "replied": "eq.false"}) if db else 0
+                if unreplied_forms > 0:
+                    from modules.reply_tracker import check_form_replies
+                    form_count = check_form_replies()
+                    if form_count > 0:
+                        add_log(f"Form reply detected: {form_count} new replies", category="form")
             except Exception as e:
                 logger.error(f"Auto reply check error: {e}")
 
@@ -1002,6 +1138,15 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             from modules.database import get_hot_leads
             self._json_response({"leads": get_hot_leads()})
 
+        elif path == "/api/scraping-config":
+            import config
+            self._json_response({
+                "leadTarget": config.DAILY_LEAD_TARGET,
+                "minScore": config.SCORE_THRESHOLDS.get("min_qualify", 40),
+                "keywords": config.SEARCH_KEYWORDS,
+                "countries": config.TARGET_COUNTRIES,
+            })
+
         elif path == "/api/sources":
             from modules.database import db
             sources = db.select("source_tracker", order="last_scraped.desc", limit=200) if db else []
@@ -1032,10 +1177,74 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 self._json_response({"total_outreach": 0})
 
         elif path == "/api/warmup-status":
-            from modules.email_warmup import get_warmup_status, get_total_remaining_capacity
+            # Email account health — shows stats per sending email account
+            import config
+            from modules.database import db
+            domains_result = []
+            total_remaining = 0
+
+            # Get configured sending email accounts
+            sending_emails = getattr(config, 'SENDING_EMAILS', [])
+            if not sending_emails:
+                # Fallback: build from SENDING_DOMAINS
+                sending_emails = config.SENDING_DOMAINS or []
+
+            # Only show configured sending emails — do NOT auto-add SMTP sender
+
+            for email_account in sending_emails:
+                domain = email_account.split("@")[-1] if "@" in email_account else email_account
+                d_stats = {
+                    "domain": email_account,  # Show full email in UI
+                    "actual_domain": domain,
+                    "emails_sent": 0, "daily_limit": config.EMAILS_PER_DOMAIN,
+                    "remaining": config.EMAILS_PER_DOMAIN, "warmup_day": 1,
+                    "total_sent": 0, "opened": 0, "replied": 0,
+                    "open_rate": 0, "reply_rate": 0,
+                    "status": "Active",
+                }
+
+                if db:
+                    try:
+                        # Get real stats — match by domain (outreach_log stores domain, not email)
+                        logs = db.select("outreach_log",
+                            filters={"channel": "eq.email", "sending_domain": f"eq.{domain}"},
+                            columns="id,lead_id,delivery_status,sent_at", limit=5000)
+                        d_stats["total_sent"] = len(logs)
+
+                        # Today's sends
+                        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                        today_sends = [l for l in logs if l.get("sent_at", "").startswith(today_str)]
+                        d_stats["emails_sent"] = len(today_sends)
+                        d_stats["remaining"] = max(0, config.EMAILS_PER_DOMAIN - len(today_sends))
+
+                        # Open/reply stats from leads
+                        leads_data = db.select("leads",
+                            columns="id,email_opened,replied",
+                            filters={"email_sent": "eq.true", "sending_domain": f"eq.{domain}"},
+                            limit=5000)
+                        if leads_data:
+                            d_stats["opened"] = sum(1 for l in leads_data if l.get("email_opened"))
+                            d_stats["replied"] = sum(1 for l in leads_data if l.get("replied"))
+                            total = len(leads_data) or 1
+                            d_stats["open_rate"] = round(d_stats["opened"] / total * 100, 1)
+                            d_stats["reply_rate"] = round(d_stats["replied"] / total * 100, 1)
+
+                        # Status
+                        if d_stats["total_sent"] > 0 and d_stats["open_rate"] > 0:
+                            d_stats["status"] = "Active"
+                        elif d_stats["total_sent"] > 0:
+                            d_stats["status"] = "Sending"
+                        else:
+                            d_stats["status"] = "Ready"
+                    except Exception as e:
+                        logger.error(f"Email account stats error for {email_account}: {e}")
+
+                total_remaining += d_stats["remaining"]
+                domains_result.append(d_stats)
+
             self._json_response({
-                "domains": get_warmup_status(),
-                "total_remaining": get_total_remaining_capacity(),
+                "domains": domains_result,
+                "total_remaining": total_remaining,
             })
 
         elif path == "/api/email-queue":
@@ -1073,28 +1282,29 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 logs = db.select("outreach_log",
                     filters={"channel": "eq.email", "sending_domain": f"eq.{domain}"},
                     order="sent_at.desc",
-                    limit=100)
-                # Enrich with lead + tracking info
+                    limit=200)
+                # Enrich with lead + full tracking info
                 for log_entry in logs:
                     if log_entry.get("lead_id"):
                         lead_rows = db.select("leads",
-                            columns="company_name,company_domain,contact_email,email_opened,replied,score,country",
+                            columns="company_name,company_domain,contact_email,contact_name,email_opened,replied,replied_at,score,country,lead_type",
                             filters={"id": f"eq.{log_entry['lead_id']}"},
                             limit=1)
                         if lead_rows:
                             log_entry["lead"] = lead_rows[0]
-                        # Get tracking data
+                        # Get full tracking data including device info
                         tracking_rows = db.select("email_tracking",
-                            columns="opened,open_count,opened_at",
+                            columns="opened,open_count,opened_at,user_agent,ip_address",
                             filters={"lead_id": f"eq.{log_entry['lead_id']}", "sequence_stage": f"eq.{log_entry.get('sequence_stage',1)}"},
                             limit=1)
                         if tracking_rows:
                             log_entry["tracking"] = tracking_rows[0]
                 # Summary stats
                 total = len(logs)
-                sent_count = sum(1 for l in logs if l.get("delivery_status") == "sent")
+                sent_count = sum(1 for l in logs if l.get("delivery_status") in ("sent", "recorded"))
                 opened_count = sum(1 for l in logs if l.get("tracking", {}).get("opened"))
                 replied_count = sum(1 for l in logs if l.get("lead", {}).get("replied"))
+                failed_count = sum(1 for l in logs if l.get("delivery_status") == "failed")
                 self._json_response({
                     "emails": logs,
                     "domain": domain,
@@ -1103,6 +1313,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                         "sent": sent_count,
                         "opened": opened_count,
                         "replied": replied_count,
+                        "failed": failed_count,
                         "open_rate": round(opened_count / sent_count * 100, 1) if sent_count else 0,
                         "reply_rate": round(replied_count / sent_count * 100, 1) if sent_count else 0,
                     }
@@ -1204,8 +1415,11 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             self._json_response(analytics)
 
         elif path == "/api/email-config":
+            import config
+            # Show the configured sending emails, not the SMTP user
+            sending = getattr(config, 'SENDING_EMAILS', config.SENDING_DOMAINS)
             self._json_response({
-                "sender_email": os.getenv("SMTP_USER", "") or os.getenv("SENDER_EMAIL", ""),
+                "sender_email": ", ".join(sending) if sending else os.getenv("SENDER_EMAIL", ""),
                 "sender_name": os.getenv("SMTP_FROM_NAME", ""),
                 "smtp_host": os.getenv("SMTP_HOST", "smtp.gmail.com"),
                 "smtp_port": os.getenv("SMTP_PORT", "587"),
@@ -1257,6 +1471,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     all_leads = db.select("leads", order="created_at.desc", limit=5000)
                     total = len(all_leads)
                     emailed = sum(1 for l in all_leads if l.get("email_sent"))
+                    opened = sum(1 for l in all_leads if l.get("email_opened"))
                     forms_filled = sum(1 for l in all_leads if l.get("form_filled"))
                     replies = sum(1 for l in all_leads if l.get("replied"))
                     closed = sum(1 for l in all_leads if l.get("closed"))
@@ -1264,6 +1479,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     self._json_response({
                         "total": total,
                         "emailed": emailed,
+                        "opened": opened,
                         "forms_filled": forms_filled,
                         "replies": replies,
                         "closed": closed,
@@ -1302,6 +1518,8 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "smtpUser": os.getenv("SMTP_USER", ""),
                 "smtpPassword": os.getenv("SMTP_PASSWORD", ""),
                 "notificationEmail": os.getenv("NOTIFICATION_EMAIL", ""),
+                "emailSubject": getattr(config, 'EMAIL_SUBJECT', os.getenv("EMAIL_SUBJECT", "Mechanical Seals & Hydraulic Fittings — FlowLock Overseas")),
+                "emailBody": getattr(config, 'EMAIL_BODY', os.getenv("EMAIL_BODY", "Dear Sir/Madam,\n\nWe are FlowLock Overseas, a leading supplier of mechanical seals and hydraulic fittings from Mumbai, India.\n\nOur product range includes cartridge seals, spring seals, bellow seals, agitator seals, and hydraulic tube fittings in SS316, Hastelloy, and Silicon Carbide.\n\nWould you be open to a free consultation to discuss your sealing requirements? We can also send a sample for quality evaluation at no cost.")),
                 "supabaseUrl": os.getenv("SUPABASE_URL", ""),
                 "supabaseKey": os.getenv("SUPABASE_KEY", ""),
                 "leadTarget": config.DAILY_LEAD_TARGET,
@@ -1312,12 +1530,14 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "pauseCountry": config.AUTO_EXCLUSION.get("country_pause_after_leads", 200),
                 "minClose": config.AUTO_EXCLUSION.get("lead_type_min_close_rate", 0.005) * 100,
                 "minReply": config.AUTO_EXCLUSION.get("source_min_reply_rate", 0.01) * 100,
-                "domains": "\n".join(config.SENDING_DOMAINS),
+                "domains": "\n".join(getattr(config, 'SENDING_EMAILS', config.SENDING_DOMAINS)),
                 "formName": config.FORM_FILL_DATA.get("name", ""),
                 "formEmail": config.FORM_FILL_DATA.get("email", ""),
                 "formPhone": config.FORM_FILL_DATA.get("phone", ""),
                 "formSubject": config.FORM_FILL_DATA.get("subject", ""),
                 "formMessage": config.FORM_FILL_DATA.get("message", ""),
+                "formReplyEmail": os.getenv("FORM_REPLY_IMAP_USER", ""),
+                "formReplyPassword": os.getenv("FORM_REPLY_IMAP_PASSWORD", ""),
                 "adminUser": ADMIN_CREDENTIALS["username"],
             })
 
@@ -1385,6 +1605,12 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     if body.get("smtpUser"): _set_env("SMTP_USER", body["smtpUser"]); config.SMTP_USER = body["smtpUser"]
                     if body.get("smtpPassword"): _set_env("SMTP_PASSWORD", body["smtpPassword"]); config.SMTP_PASSWORD = body["smtpPassword"]
                     if body.get("notificationEmail"): _set_env("NOTIFICATION_EMAIL", body["notificationEmail"]); config.NOTIFICATION_EMAIL = body["notificationEmail"]
+                    if body.get("emailSubject"):
+                        config.EMAIL_SUBJECT = body["emailSubject"]
+                        _set_env("EMAIL_SUBJECT", body["emailSubject"])
+                    if body.get("emailBody"):
+                        config.EMAIL_BODY = body["emailBody"]
+                        _set_env("EMAIL_BODY", body["emailBody"])
 
                 elif section == "supabase":
                     if body.get("supabaseUrl"): _set_env("SUPABASE_URL", body["supabaseUrl"]); config.SUPABASE_URL = body["supabaseUrl"]
@@ -1402,7 +1628,18 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
 
                 elif section == "emailConfig":
                     if body.get("emailsPerDomain"): config.EMAILS_PER_DOMAIN = int(body["emailsPerDomain"])
-                    if body.get("domains"): config.SENDING_DOMAINS = [d.strip() for d in body["domains"].split("\n") if d.strip()]
+                    if body.get("domains"):
+                        raw_entries = [d.strip() for d in body["domains"].split("\n") if d.strip()]
+                        # Store full email accounts
+                        config.SENDING_EMAILS = raw_entries
+                        # Extract unique domains
+                        clean_domains = []
+                        for d in raw_entries:
+                            domain = d.split("@")[-1] if "@" in d else d
+                            if domain and domain not in clean_domains:
+                                clean_domains.append(domain)
+                        config.SENDING_DOMAINS = clean_domains
+                        add_log(f"Sending emails updated: {', '.join(raw_entries)}", category="system")
                     if body.get("pauseCountry"): config.AUTO_EXCLUSION["country_pause_after_leads"] = int(body["pauseCountry"])
                     if body.get("minClose"): config.AUTO_EXCLUSION["lead_type_min_close_rate"] = float(body["minClose"]) / 100
                     if body.get("minReply"): config.AUTO_EXCLUSION["source_min_reply_rate"] = float(body["minReply"]) / 100
@@ -1424,6 +1661,13 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     if body.get("formMessage"):
                         config.FORM_FILL_DATA["message"] = body["formMessage"]
                     add_log(f"Form content updated: {config.FORM_FILL_DATA.get('name','')} | {config.FORM_FILL_DATA.get('email','')}", category="system")
+
+                elif section == "formReply":
+                    if body.get("formReplyEmail"):
+                        _set_env("FORM_REPLY_IMAP_USER", body["formReplyEmail"])
+                    if body.get("formReplyPassword"):
+                        _set_env("FORM_REPLY_IMAP_PASSWORD", body["formReplyPassword"])
+                    add_log("Form reply IMAP credentials updated", category="system")
 
                 elif section == "adminCreds":
                     if body.get("adminUser"): ADMIN_CREDENTIALS["username"] = body["adminUser"]
@@ -1481,6 +1725,29 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             agent_state["status"] = "idle"
             add_log("Agent stopped — all workers halted", category="system")
             self._json_response({"status": "agent_stopped"})
+
+        elif path == "/api/scraping-config":
+            # Update scraping config at runtime
+            try:
+                import config
+                if body.get("leadTarget"):
+                    config.DAILY_LEAD_TARGET = int(body["leadTarget"])
+                if body.get("minScore"):
+                    config.SCORE_THRESHOLDS["min_qualify"] = int(body["minScore"])
+                if body.get("keywords"):
+                    if isinstance(body["keywords"], list):
+                        config.SEARCH_KEYWORDS = [k.strip() for k in body["keywords"] if k.strip()]
+                    elif isinstance(body["keywords"], str):
+                        config.SEARCH_KEYWORDS = [k.strip() + " {country}" for k in body["keywords"].split(",") if k.strip()]
+                if body.get("countries"):
+                    if isinstance(body["countries"], list):
+                        config.TARGET_COUNTRIES = body["countries"]
+                    elif isinstance(body["countries"], str):
+                        config.TARGET_COUNTRIES = [c.strip() for c in body["countries"].split(",") if c.strip()]
+                add_log(f"Scraping config updated: target={config.DAILY_LEAD_TARGET}, minScore={config.SCORE_THRESHOLDS['min_qualify']}, keywords={len(config.SEARCH_KEYWORDS)}, countries={len(config.TARGET_COUNTRIES)}", category="system")
+                self._json_response({"status": "saved"})
+            except Exception as e:
+                self._json_response({"error": str(e)}, 500)
 
         elif path == "/api/check-replies":
             # Manually trigger reply check right now
@@ -1764,7 +2031,7 @@ def main():
     set_log_callback(add_log)
 
     print()
-    print("  MicrodyneHunter v2 - Command Center")
+    print("  FlowLockHunter v2 - Command Center")
     print(f"  Dashboard:  http://localhost:{PORT}")
     print(f"  API:        http://localhost:{PORT}/api/status")
     print()

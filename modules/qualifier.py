@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Lead Qualification & Scoring Module
+FlowLockHunter v2 — Lead Qualification & Scoring Module
 Uses Claude AI to score leads and tag them with metadata.
 """
 
@@ -15,15 +15,15 @@ from config import (
 from modules.database import update_lead, is_segment_paused
 from modules.ai_client import ai_generate, is_ai_available
 
-logger = logging.getLogger("microdynehunter.qualifier")
+logger = logging.getLogger("flowlockhunter.qualifier")
 
 # ═══════════════════════════════════════════════════════════════
 # AI SCORING
 # ═══════════════════════════════════════════════════════════════
 
-SCORING_PROMPT = """You are a B2B lead scoring expert for Microdyne Engineering, a mechanical seals and CNC precision components manufacturer based in Mumbai, India.
+SCORING_PROMPT = """You are a B2B lead scoring expert for FlowLock Overseas, a mechanical seals and CNC precision components manufacturer based in Mumbai, India.
 
-Microdyne Engineering sells:
+FlowLock Overseas sells:
 - Mechanical Seals (single, double, cartridge seals for pumps & rotating equipment)
 - CNC Precision Components (custom-machined parts to tight tolerances)
 - Seal Support Systems (piping plans, vessels, instrumentation)
@@ -31,7 +31,7 @@ Microdyne Engineering sells:
 
 Target buyers: Chemical plants, pharmaceutical companies, oil & gas refineries, water treatment plants, power generation facilities, OEM pump manufacturers, food processing plants, general engineering firms.
 
-Score this lead from 0-100 based on how likely they are to buy Microdyne Engineering's products:
+Score this lead from 0-100 based on how likely they are to buy FlowLock Overseas's products:
 
 Company: {company_name}
 Domain: {company_domain}
@@ -52,7 +52,7 @@ Return ONLY valid JSON:
     "score": <0-100>,
     "reason": "<one sentence why>",
     "company_size": "<small|medium|enterprise>",
-    "likely_products": ["<which Microdyne Engineering products they'd need>"],
+    "likely_products": ["<which FlowLock Overseas products they'd need>"],
     "priority": "<high|medium|low>"
 }}"""
 

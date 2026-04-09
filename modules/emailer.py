@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Email Outreach Module
+FlowLockHunter v2 — Email Outreach Module
 Sends personalized cold emails via Instantly.dev API.
 """
 
@@ -18,7 +18,7 @@ from config import (
 )
 from modules.database import update_lead, log_outreach
 
-logger = logging.getLogger("microdynehunter.emailer")
+logger = logging.getLogger("flowlockhunter.emailer")
 
 ai_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 http = httpx.Client(timeout=30)
@@ -32,10 +32,10 @@ INSTANTLY_BASE = "https://api.instantly.ai/api/v1"
 
 EMAIL_TEMPLATES = {
     "initial": {
-        "subject": "Mechanical seals & CNC parts for {region} — free consultation for {company}",
-        "prompt": """Write a short, personalized cold email (max 100 words) from {sender_name} at Microdyne Engineering to {contact_name} at {company_name}.
+        "subject": None,  # Uses EMAIL_SUBJECT from config (editable via admin panel)
+        "prompt": """Write a short, personalized cold email (max 100 words) from {sender_name} at FlowLock Overseas to {contact_name} at {company_name}.
 
-Microdyne Engineering manufactures mechanical seals and CNC precision components for industrial applications.
+FlowLock Overseas manufactures mechanical seals and CNC precision components for industrial applications.
 The lead is a {lead_type} in {country}.
 Offer: Free consultation and sample to demonstrate quality.
 
@@ -45,8 +45,8 @@ End with a clear CTA asking if they'd like a free consultation or sample for the
 Return ONLY the email body (no subject line, no greeting "Hi Name" — that's added automatically).""",
     },
     "quality": {
-        "subject": "Precision-engineered seals for {region} — Microdyne Engineering",
-        "prompt": """Write a follow-up email #2 (max 80 words) from {sender_name} at Microdyne Engineering.
+        "subject": "Precision-engineered seals for {region} — FlowLock Overseas",
+        "prompt": """Write a follow-up email #2 (max 80 words) from {sender_name} at FlowLock Overseas.
 This is the SECOND email to {contact_name} at {company_name}, a {lead_type} in {country}.
 They didn't reply to the first email about free consultation and sample.
 
@@ -57,20 +57,20 @@ Tone: Helpful, not pushy.
 Return ONLY the email body.""",
     },
     "social_proof": {
-        "subject": "Serving top plants across {region} — Microdyne Engineering",
-        "prompt": """Write follow-up email #3 (max 80 words) from {sender_name} at Microdyne Engineering.
+        "subject": "Serving top plants across {region} — FlowLock Overseas",
+        "prompt": """Write follow-up email #3 (max 80 words) from {sender_name} at FlowLock Overseas.
 Third email to {contact_name} at {company_name}, a {lead_type} in {country}.
 No reply to 2 previous emails.
 
-Angle: Social proof — mention Microdyne Engineering serves major chemical plants, refineries, and pharma facilities across India and globally.
+Angle: Social proof — mention FlowLock Overseas serves major chemical plants, refineries, and pharma facilities across India and globally.
 Make them feel they're missing out on a reliable manufacturing partner.
 Tone: Confident but not arrogant.
 
 Return ONLY the email body.""",
     },
     "breakup": {
-        "subject": "Last note from Microdyne Engineering — offer stays open, {contact_name}",
-        "prompt": """Write a final breakup email #4 (max 60 words) from {sender_name} at Microdyne Engineering.
+        "subject": "Last note from FlowLock Overseas — offer stays open, {contact_name}",
+        "prompt": """Write a final breakup email #4 (max 60 words) from {sender_name} at FlowLock Overseas.
 Fourth and last email to {contact_name} at {company_name}.
 No reply to 3 previous emails.
 
@@ -84,14 +84,21 @@ Return ONLY the email body.""",
 
 def generate_email(lead: dict, stage: str) -> dict:
     """Generate a personalized email using AI or templates."""
+    from config import EMAIL_SUBJECT
     template = EMAIL_TEMPLATES.get(stage, EMAIL_TEMPLATES["initial"])
     region = lead.get("country", "your region")
     company = lead.get("company_name", "your company")
     contact = lead.get("contact_name", "there")
 
-    subject = template["subject"].format(
-        region=region, company=company, contact_name=contact,
-    )
+    # Use configurable subject from admin panel for initial emails
+    template_subject = template.get("subject")
+    if template_subject:
+        subject = template_subject.format(
+            region=region, company=company, contact_name=contact,
+        )
+    else:
+        # Use the admin-configurable subject
+        subject = getattr(__import__('config'), 'EMAIL_SUBJECT', EMAIL_SUBJECT)
 
     if ai_client:
         try:
@@ -122,23 +129,21 @@ def generate_email(lead: dict, stage: str) -> dict:
 
 
 def _fallback_body(lead: dict, stage: str) -> str:
-    """Fallback email body when AI is unavailable."""
+    """Fallback email body when AI is unavailable. Uses EMAIL_BODY from admin panel for initial."""
+    from config import EMAIL_BODY
     country = lead.get("country", "your region")
+    # For initial emails, use the admin-configurable body
+    admin_body = getattr(__import__('config'), 'EMAIL_BODY', EMAIL_BODY)
     bodies = {
-        "initial": (
-            f"We manufacture mechanical seals and CNC precision components for industrial "
-            f"applications across {country} and globally.\n\n"
-            f"Would you be open to a free consultation to discuss your sealing requirements? "
-            f"No commitment — just share your equipment details and we'll recommend the right solution."
-        ),
+        "initial": admin_body,
         "quality": (
-            f"Quick follow-up — Microdyne Engineering maintains API 682 compliance and tight "
+            f"Quick follow-up — FlowLock Overseas maintains API 682 compliance and tight "
             f"tolerances on all our mechanical seals and CNC components.\n\n"
             f"Happy to send a sample if you'd like to verify our quality. "
             f"What are your main equipment types?"
         ),
         "social_proof": (
-            f"Microdyne Engineering currently serves major chemical plants, refineries, "
+            f"FlowLock Overseas currently serves major chemical plants, refineries, "
             f"and pharmaceutical facilities across India and globally.\n\n"
             f"We'd love to add {lead.get('company_name', 'your company')} to our client network. "
             f"Free consultation and sample available — interested?"

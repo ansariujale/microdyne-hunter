@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MicrodyneHunter v2 — Main Orchestrator
+FlowLockHunter v2 — Main Orchestrator
 Runs the full daily pipeline: scrape → qualify → email → form fill → follow-up.
 Also handles weekly intelligence reports.
 
@@ -49,7 +49,7 @@ logging.basicConfig(
     datefmt="[%X]",
     handlers=[RichHandler(rich_tracebacks=True)],
 )
-logger = logging.getLogger("microdynehunter")
+logger = logging.getLogger("flowlockhunter")
 console = Console()
 
 
@@ -133,10 +133,10 @@ def step_report():
 # ═══════════════════════════════════════════════════════════════
 
 def run_daily_pipeline():
-    """Run the complete daily MicrodyneHunter pipeline."""
+    """Run the complete daily FlowLockHunter pipeline."""
     start = time.time()
     console.print(Panel(
-        "[bold]MicrodyneHunter v2 — Daily Pipeline[/bold]\n"
+        "[bold]FlowLockHunter v2 — Daily Pipeline[/bold]\n"
         f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
         f"Target: {DAILY_LEAD_TARGET} leads/day",
         style="bold green",
@@ -203,7 +203,7 @@ def show_stats():
     today = get_today_stats()
     hot = get_hot_leads()
 
-    table = Table(title="MicrodyneHunter v2 — Current Stats")
+    table = Table(title="FlowLockHunter v2 — Current Stats")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
 
@@ -231,7 +231,7 @@ def show_stats():
 
 def run_scheduled():
     """Run on a daily schedule."""
-    console.print("[bold]MicrodyneHunter v2 — Scheduled Mode[/bold]")
+    console.print("[bold]FlowLockHunter v2 — Scheduled Mode[/bold]")
     console.print("Pipeline will run daily at 06:00 UTC\n")
 
     schedule.every().day.at("06:00").do(run_daily_pipeline)
@@ -249,7 +249,7 @@ def run_scheduled():
 # ═══════════════════════════════════════════════════════════════
 
 def main():
-    parser = argparse.ArgumentParser(description="MicrodyneHunter v2 — AI Sales Agent for Microdyne Engineering")
+    parser = argparse.ArgumentParser(description="FlowLockHunter v2 — AI Sales Agent for FlowLock Overseas")
     parser.add_argument("--scrape", action="store_true", help="Run scraping only")
     parser.add_argument("--email", action="store_true", help="Send emails only")
     parser.add_argument("--forms", action="store_true", help="Fill forms only")

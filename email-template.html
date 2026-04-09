@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<!--
+  ═══════════════════════════════════════════════════════════════
+  FlowLock Overseas — Email Template
+  ═══════════════════════════════════════════════════════════════
+
+  HOW TO USE:
+  1. Open this file in browser to preview
+  2. Edit the HTML below to change the design
+  3. Save the file — changes apply on next email send
+  4. The system replaces {{variables}} at send time
+
+  VARIABLES (auto-replaced when sending):
+    {{company_name}}    → FlowLock Overseas
+    {{contact_name}}    → H. Khorajiya
+    {{phone}}           → +91-9082717763
+    {{email}}           → sales@flowlockoverseas.com
+    {{website}}         → www.flowlockoverseas.com
+    {{greeting}}        → Hi [Name],
+    {{body_content}}    → Email body paragraphs
+    {{cta_button}}      → CTA button HTML (stages 1-2)
+    {{pixel}}           → Tracking pixel (invisible)
+
+  FOR PREVIEW: variables show with sample data below
+  ═══════════════════════════════════════════════════════════════
+-->
+<script>
+// Auto-fill variables for preview when opened in browser
+window.addEventListener('DOMContentLoaded', function(){
+  const vars = {
+    '{{company_name}}': 'FlowLock Overseas',
+    '{{contact_name}}': 'H. Khorajiya',
+    '{{phone}}': '+91-9082717763',
+    '{{email}}': 'sales@flowlockoverseas.com',
+    '{{website}}': 'www.flowlockoverseas.com',
+    '{{greeting}}': '<p style="margin:0 0 16px 0;font-size:15px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;color:#2c3e50;">Dear Sir/Madam,</p>',
+    '{{body_content}}': '<p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">We are <strong style="color:#2c3e50;">FlowLock Overseas</strong>, a leading supplier of <strong style="color:#2c3e50;">mechanical seals</strong> and <strong style="color:#2c3e50;">hydraulic fittings</strong> from Mumbai, India.</p><p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">Our product range includes <strong style="color:#2c3e50;">cartridge seals</strong>, <strong style="color:#2c3e50;">spring seals</strong>, <strong style="color:#2c3e50;">bellow seals</strong>, agitator seals, and hydraulic tube fittings in <strong style="color:#2c3e50;">SS316</strong>, <strong style="color:#2c3e50;">Hastelloy</strong>, and <strong style="color:#2c3e50;">Silicon Carbide</strong>.</p><p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">Would you be open to a <strong style="color:#2c3e50;">free consultation</strong> to discuss your sealing requirements? We can also send a sample for quality evaluation at no cost.</p>',
+    '{{cta_button}}': '',
+    '{{pixel}}': '<!-- tracking pixel -->'
+  };
+  let html = document.body.innerHTML;
+  for(const [k,v] of Object.entries(vars)){
+    html = html.split(k).join(v);
+  }
+  document.body.innerHTML = html;
+});
+</script>
+<!--[if mso]><style>body,table,td{font-family:Segoe UI,Arial,sans-serif !important;}</style><![endif]-->
+<style>
+  /* Mobile responsive */
+  @media only screen and (max-width: 640px) {
+    table[role="presentation"] { width: 100% !important; }
+    td { padding-left: 16px !important; padding-right: 16px !important; }
+    .header-phone { display: none !important; }
+    td[width="50%"] { display: block !important; width: 100% !important; text-align: left !important; padding-bottom: 12px !important; }
+    td[align="right"] { text-align: left !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f0f4f8;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:28px 0;">
+<tr><td align="center">
+<table role="presentation" width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);border:1px solid #e8eef3;">
+
+  <!-- ═══ HEADER BAR ═══ -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#3498db 0%,#2176ad 100%);padding:22px 36px;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td>
+            <div style="font-family:'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:0.3px;">{{company_name}}</div>
+            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;letter-spacing:0.8px;text-transform:uppercase;">Mechanical Seals &bull; Hydraulic Fittings &bull; Sealing Solutions</div>
+          </td>
+          <td align="right" valign="middle">
+            <a href="tel:+919082717763" style="display:inline-block;padding:8px 18px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#ffffff;text-decoration:none;font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;font-weight:600;"><img src="https://img.icons8.com/ios-filled/14/ffffff/phone.png" width="12" height="12" style="vertical-align:middle;margin-right:4px;" alt=""> {{phone}}</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ═══ EMAIL BODY ═══ -->
+  <tr>
+    <td style="padding:36px 36px 24px 36px;font-family:'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+      {{greeting}}
+      {{body_content}}
+    </td>
+  </tr>
+
+  <!-- CTA button removed — clean template -->
+
+  <!-- ═══ SIGNATURE BLOCK ═══ -->
+  <tr>
+    <td style="padding:0 36px 28px 36px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #3498db;padding-top:20px;">
+        <tr>
+          <td width="50%" valign="top">
+            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;font-weight:800;color:#2c3e50;letter-spacing:0.2px;">{{contact_name}}</div>
+            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;color:#3498db;margin-top:3px;font-weight:600;">{{company_name}}</div>
+          </td>
+          <td width="50%" valign="top" align="right">
+            <table cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;color:#2c3e50;line-height:2.2;">
+                  <a href="tel:+919082717763" style="color:#2c3e50;text-decoration:none;font-weight:600;"><img src="https://img.icons8.com/ios-filled/16/2c3e50/phone.png" width="14" height="14" style="vertical-align:middle;margin-right:6px;" alt="">{{phone}}</a><br>
+                  <a href="mailto:{{email}}" style="color:#3498db;text-decoration:none;"><img src="https://img.icons8.com/ios-filled/16/3498db/new-post.png" width="14" height="14" style="vertical-align:middle;margin-right:6px;" alt="">{{email}}</a><br>
+                  <a href="https://{{website}}" style="color:#3498db;text-decoration:none;"><img src="https://img.icons8.com/ios-filled/16/3498db/globe--v1.png" width="14" height="14" style="vertical-align:middle;margin-right:6px;" alt="">{{website}}</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ═══ FOOTER ═══ -->
+  <tr>
+    <td style="background:#f8fafb;padding:20px 36px;border-top:1px solid #edf1f5;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="font-family:'Segoe UI',Roboto,Arial,sans-serif;">
+            <div style="font-size:12px;font-weight:700;color:#2c3e50;margin-bottom:4px;">{{company_name}}</div>
+            <div style="font-size:11px;color:#7f8c8d;line-height:1.7;">
+              Supplier of <strong style="color:#5a6c7d;">Mechanical Seals</strong> &amp; <strong style="color:#5a6c7d;">Hydraulic Fittings</strong><br>
+              Mumbai, Maharashtra, India &nbsp;&bull;&nbsp; GST: 27ISYPK7898N1ZX &nbsp;&bull;&nbsp; <a href="tel:+919082717763" style="color:#3498db;text-decoration:none;font-weight:600;">+91 9082717763</a>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-top:12px;">
+            <table cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Cartridge Seals</td>
+                <td width="6"></td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Spring Seals</td>
+                <td width="6"></td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Bellow Seals</td>
+                <td width="6"></td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Hydraulic Fittings</td>
+                <td width="6"></td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Agitator Seals</td>
+                <td width="6"></td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Seal Repair</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+</table>
+{{pixel}}
+</td></tr>
+</table>
+</body>
+</html>

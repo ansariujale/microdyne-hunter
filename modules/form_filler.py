@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Contact Form Filling Module
+FlowLockHunter v2 — Contact Form Filling Module
 Uses Playwright (headless browser) to find and fill contact forms on lead websites.
 Human-like behavior with random delays, CAPTCHA detection, cookie banner dismissal.
 Cleans website URLs to base domain before processing.
@@ -21,7 +21,7 @@ from config import (
 )
 from modules.database import update_lead, log_outreach
 
-logger = logging.getLogger("microdynehunter.formfiller")
+logger = logging.getLogger("flowlockhunter.formfiller")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -495,8 +495,59 @@ async def fill_contact_form(page: Page, lead: dict) -> dict:
     # Attempt to solve CAPTCHA if present (instead of skipping)
     await attempt_captcha_solve(page)
 
+    # ═══ DIRECT ID-BASED FILL (most reliable — try first) ═══
     try:
-        # Map form fields using comprehensive JavaScript analysis
+        direct_map = {
+            '#fullname': data['name'], '#full_name': data['name'], '#full-name': data['name'],
+            '#name': data['name'], '#contactname': data['name'], '#contact_name': data['name'],
+            '#email': data['email'], '#contact_email': data['email'], '#emailaddress': data['email'],
+            '#phone': data['phone'], '#tel': data['phone'], '#mobile': data['phone'],
+            '#contact_phone': data['phone'], '#phonenumber': data['phone'],
+            '#subject': data['subject'], '#subj': data['subject'], '#topic': data['subject'],
+            '#message': data['message'], '#msg': data['message'], '#comment': data['message'],
+            '#company': data['company'], '#organization': data['company'],
+            '#first_name': data['first_name'], '#firstname': data['first_name'], '#fname': data['first_name'],
+            '#last_name': data['last_name'], '#lastname': data['last_name'], '#lname': data['last_name'],
+        }
+        direct_filled = 0
+        for selector, value in direct_map.items():
+            if not value:
+                continue
+            try:
+                el = await page.query_selector(selector)
+                if el and await el.is_visible():
+                    await page.fill(selector, value, timeout=2000)
+                    actual = await page.evaluate(f"document.querySelector('{selector}')?.value || ''")
+                    if actual == value:
+                        direct_filled += 1
+            except:
+                pass
+
+        # If we filled 3+ fields directly, try to submit
+        if direct_filled >= 3:
+            logger.info(f"[Form] Direct fill: {direct_filled} fields filled by ID")
+            # Find and click submit button
+            submit_selectors = [
+                'button[type="submit"]', 'input[type="submit"]',
+                'button:has-text("Submit")', 'button:has-text("Send")',
+                'button:has-text("Contact")', 'button:has-text("Inquiry")',
+            ]
+            for btn_sel in submit_selectors:
+                try:
+                    btn = await page.query_selector(btn_sel)
+                    if btn and await btn.is_visible():
+                        await btn.click(timeout=5000)
+                        await page.wait_for_timeout(3000)
+                        return {"success": True, "fields_filled": direct_filled, "error_message": None}
+                except:
+                    continue
+            # If no submit button found, still return success for the fill
+            return {"success": True, "fields_filled": direct_filled, "error_message": "Filled but no submit button found"}
+    except Exception as e:
+        logger.debug(f"[Form] Direct fill attempt failed: {e}")
+
+    try:
+        # ═══ FALLBACK: JS-based field detection ═══
         field_map = await page.evaluate("""(data) => {
             """ + FIELD_PATTERNS_JS + """
 
@@ -637,7 +688,7 @@ async def fill_contact_form(page: Page, lead: dict) -> dict:
             'company': data['company'],
             'subject': data['subject'],
             'message': data['message'],
-            'website': 'https://microdyneengineering.com',
+            'website': 'https://flowlockoverseas.com',
         }
 
         for field in fields:

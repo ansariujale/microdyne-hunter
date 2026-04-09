@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- MicrodyneHunter v2 — Supabase Database Schema
+-- FlowLockHunter v2 — Supabase Database Schema
 -- Run this in your Supabase SQL Editor to set up the database
 -- Go to: https://supabase.com/dashboard → Your Project → SQL Editor → Paste & Run
 -- ═══════════════════════════════════════════════════════════════

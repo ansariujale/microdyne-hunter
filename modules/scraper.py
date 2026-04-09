@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Lead Scraping Module
+FlowLockHunter v2 — Lead Scraping Module
 Primary source: Apify Google Maps Scraper (compass/crawler-google-places)
 Also supports: Apollo.io, DuckDuckGo/Bing fallback
 """
@@ -24,7 +24,7 @@ from modules.database import (
 )
 from modules.events import emit_log, get_country_flag
 
-logger = logging.getLogger("microdynehunter.scraper")
+logger = logging.getLogger("flowlockhunter.scraper")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

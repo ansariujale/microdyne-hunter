@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Email Variant Generation & Scoring Engine
+FlowLockHunter v2 — Email Variant Generation & Scoring Engine
 Generates 5 AI email variants per lead, scores them, picks the winner.
 """
 
@@ -14,7 +14,7 @@ from config import (
 )
 from modules.ai_client import ai_generate, is_ai_available
 
-logger = logging.getLogger("microdynehunter.variants")
+logger = logging.getLogger("flowlockhunter.variants")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -24,7 +24,7 @@ logger = logging.getLogger("microdynehunter.variants")
 STAGE_CONFIG = {
     1: {
         "name": "initial",
-        "description": "Introduce Microdyne Engineering, highlight free consultation & sample. Show you know their industry.",
+        "description": "Introduce FlowLock Overseas, highlight free consultation & sample. Show you know their industry.",
         "word_limit": 100,
         "subject_hint": "mention their industry/equipment + value prop",
     },
@@ -55,7 +55,7 @@ STAGE_CONFIG = {
 
 VARIANT_PROMPT = """You are a senior B2B cold email copywriter. You write like a peer, not a vendor.
 
-ABOUT THE SENDER (Microdyne Engineering):
+ABOUT THE SENDER (FlowLock Overseas):
 - Mechanical seals & CNC precision components manufacturer based in Mumbai, India
 - Products: Mechanical Seals (single, double, cartridge), CNC Precision Components, Seal Support Systems, Wear Parts & Spares
 - Serves: Chemical plants, pharma, oil & gas, water treatment, power generation, OEM pump manufacturers
@@ -177,7 +177,7 @@ def _fallback_variants(lead: dict, stage: dict) -> list[dict]:
     templates = {
         "initial": [
             {"subject": f"Mechanical seals for {country} — free sample", "body": f"We manufacture mechanical seals and CNC precision components for industrial applications. If {company} operates {lead_type} equipment in {country}, happy to send a free sample for evaluation. What are your key equipment types?", "angle": "free-sample"},
-            {"subject": f"Precision components for {country} plants", "body": f"Microdyne Engineering manufactures mechanical seals and precision parts for {country} and global markets. If you run {lead_type} operations, our quality and pricing might be worth a look. Want me to send a product catalogue for your equipment?", "angle": "catalogue"},
+            {"subject": f"Precision components for {country} plants", "body": f"FlowLock Overseas manufactures mechanical seals and precision parts for {country} and global markets. If you run {lead_type} operations, our quality and pricing might be worth a look. Want me to send a product catalogue for your equipment?", "angle": "catalogue"},
         ],
         "quality": [
             {"subject": f"API 682 compliant seals for {country}", "body": f"Quick follow-up — our mechanical seals are API 682 compliant with extended MTBF and tight tolerances. If seal reliability matters to {company}, a sample would speak for itself. Interested?", "angle": "quality"},
@@ -389,7 +389,7 @@ def generate_and_pick_winner(lead: dict, sequence_stage: int = 1) -> tuple[list[
         # Ultimate fallback — simple template
         fallback = {
             "subject": f"Mechanical seals for {lead.get('country', 'your region')}",
-            "body": f"Microdyne Engineering manufactures mechanical seals and CNC precision components for industrial applications. "
+            "body": f"FlowLock Overseas manufactures mechanical seals and CNC precision components for industrial applications. "
                     f"Happy to send a free sample for {lead.get('company_name', 'your company')} "
                     f"to evaluate our quality. Interested?",
             "angle": "fallback",

@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Lead Enrichment Module
+FlowLockHunter v2 — Lead Enrichment Module
 Fetches company website HTML → extracts emails & phone numbers via regex.
 Ported from the user's n8n JS extraction logic.
 """
@@ -15,7 +15,7 @@ import httpx
 
 from config import REQUEST_TIMEOUT
 
-logger = logging.getLogger("microdynehunter.enricher")
+logger = logging.getLogger("flowlockhunter.enricher")
 
 # ═══════════════════════════════════════════════════════════════
 # HELPERS

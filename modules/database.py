@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Database Module (Lightweight)
+FlowLockHunter v2 — Database Module (Lightweight)
 Uses httpx to call Supabase REST API directly — no heavy SDK needed.
 """
 
@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from config import SUPABASE_URL, SUPABASE_KEY
 
-logger = logging.getLogger("microdynehunter.db")
+logger = logging.getLogger("flowlockhunter.db")
 
 # ═══════════════════════════════════════════════════════════════
 # SUPABASE REST CLIENT (lightweight, no SDK)
@@ -435,11 +435,14 @@ def get_leads_for_form_outreach(limit: int = 10) -> list[dict]:
     if not db:
         return []
 
-    # Step 1: Get candidate leads (pending + never filled)
+    # Step 1: Get candidate leads (pending + never filled + score >= 40)
+    from config import SCORE_THRESHOLDS
+    min_score = SCORE_THRESHOLDS.get("min_qualify", 40)
     candidates = db.select("leads", filters={
         "form_submission_status": "eq.pending",
         "form_filled": "eq.false",
         "excluded": "eq.false",
+        "score": f"gte.{min_score}",
     }, order="created_at.asc", limit=limit * 3)  # fetch extra to allow filtering
 
     if not candidates:
@@ -598,7 +601,7 @@ def get_form_outreach_results(limit: int = 50, status: str = None,
             filters["form_last_attempted_at"] = f"lte.{date_to}T23:59:59Z"
 
     results = db.select("leads",
-        columns="id,company_name,website_url,contact_page_url,form_submission_status,form_error_message,form_last_attempted_at,form_filled",
+        columns="id,company_name,website_url,contact_page_url,form_submission_status,form_error_message,form_last_attempted_at,form_filled,replied,reply_source",
         filters=filters,
         order="form_last_attempted_at.desc",
         limit=limit
@@ -628,14 +631,41 @@ def get_followup_due() -> list[dict]:
 
 
 def get_hot_leads() -> list[dict]:
-    """Get leads that replied and are interested."""
+    """Get hot leads — replied, opened with high score, or interested. Sorted by priority."""
     if not db:
         return []
-    return db.select("leads", filters={
+    hot = []
+    # Priority 1: Replied leads (highest)
+    replied = db.select("leads", filters={
         "replied": "eq.true",
+        "closed": "eq.false",
+    }, order="replied_at.desc", limit=20)
+    hot.extend(replied)
+
+    # Priority 2: Opened + high score (score >= 70)
+    seen_ids = {l["id"] for l in hot}
+    opened = db.select("leads", filters={
+        "email_opened": "eq.true",
+        "replied": "eq.false",
+        "closed": "eq.false",
+        "score": "gte.70",
+    }, order="score.desc", limit=20)
+    for l in opened:
+        if l["id"] not in seen_ids:
+            hot.append(l)
+            seen_ids.add(l["id"])
+
+    # Priority 3: Interested leads
+    interested = db.select("leads", filters={
         "interested": "eq.true",
         "closed": "eq.false",
-    }, order="replied_at.desc")
+    }, order="score.desc", limit=10)
+    for l in interested:
+        if l["id"] not in seen_ids:
+            hot.append(l)
+            seen_ids.add(l["id"])
+
+    return hot[:30]
 
 
 # ═══════════════════════════════════════════════════════════════

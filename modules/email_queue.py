@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Email Workers (DB-Polling)
+FlowLockHunter v2 — Email Workers (DB-Polling)
 Two independent background workers:
   1. Email Worker — polls DB for "New" leads, generates variants, sends
   2. Followup Worker — polls DB for due follow-ups, sends next in sequence
@@ -28,7 +28,7 @@ def _using_smtp() -> bool:
     return no_instantly and has_smtp
 from modules.events import emit_log
 
-logger = logging.getLogger("microdynehunter.email_queue")
+logger = logging.getLogger("flowlockhunter.email_queue")
 
 # ═══════════════════════════════════════════════════════════════
 # WORKER STATE (shared with dashboard via agent_state)
@@ -278,175 +278,68 @@ def _create_tracking_pixel(lead: dict, to_email: str, subject: str, sequence_sta
 
 
 def _build_html_email(body: str, lead: dict, subject: str, sequence_stage: int, pixel_html: str) -> str:
-    """Build a professional HTML email with Microdyne Engineering branding."""
-    from config import ROZPER
+    """Build HTML email using email-template.html with exact admin panel content.
+    Supports <b>bold</b> tags in the body content."""
+    import os, re
+    from config import ROZPER, EMAIL_BODY
 
-    company_name = ROZPER.get("company_name", "Microdyne Engineering")
-    contact_name = ROZPER.get("contact_name", "Shohail Maredia")
-    phone = ROZPER.get("phone", "+91-9082121601")
-    email_addr = ROZPER.get("contact_email", "sales@microdyneengineering.com")
-    website = ROZPER.get("website", "https://www.microdyneengineering.com")
+    company_name = ROZPER.get("company_name", "FlowLock Overseas")
+    contact_name = ROZPER.get("contact_name", "H. Khorajiya")
+    phone = ROZPER.get("phone", "+91-9082717763")
+    email_addr = ROZPER.get("contact_email", "sales@flowlockoverseas.com")
+    website = ROZPER.get("website", "https://www.flowlockoverseas.com")
 
-    # Split body into greeting + content + signature
-    lines = body.strip().split("\n")
-    greeting = ""
-    signature_lines = []
-    content_lines = []
-    in_signature = False
+    # Use the EXACT admin panel body content (not AI-generated)
+    admin_body = getattr(__import__('config'), 'EMAIL_BODY', EMAIL_BODY)
 
-    for line in lines:
-        stripped = line.strip()
-        if stripped.lower().startswith("hi ") or stripped.lower().startswith("hello ") or stripped.lower().startswith("dear "):
-            greeting = stripped
-        elif stripped.lower() in ("best,", "best regards,", "regards,", "thanks,", "thank you,", "cheers,"):
-            in_signature = True
-            signature_lines.append(stripped)
-        elif in_signature:
-            signature_lines.append(stripped)
-        elif stripped:
-            content_lines.append(stripped)
-
-    # Bold key terms in the content
-    bold_terms = [
-        "mechanical seals", "CNC precision components", "CNC machined components",
-        "precision turned parts", "cartridge seals", "spring seals", "bellow seals",
-        "pump seals", "agitator seals", "seal repair", "refurbishment",
-        "SS316", "SS304", "Hastelloy", "Silicon Carbide", "Tungsten Carbide",
-        "PTFE", "Viton", "API 682", "free consultation", "free sample",
-        "Microdyne Engineering", "manufacturer-direct",
-    ]
-
+    # Convert plain text body to styled HTML paragraphs
+    # Support <b>text</b> tags — convert to <strong> with styling
     body_html = ""
-    for line in content_lines:
-        styled_line = line
-        for term in bold_terms:
-            if term.lower() in styled_line.lower():
-                import re
-                pattern = re.compile(re.escape(term), re.IGNORECASE)
-                styled_line = pattern.sub(f'<strong style="color:#2c3e50;">{term}</strong>', styled_line, count=1)
-        body_html += f'<p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;">{styled_line}</p>\n'
+    paragraphs = admin_body.strip().split("\n\n")  # Split by double newline = paragraphs
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        # Convert <b>text</b> to styled <strong>
+        para = re.sub(r'<b>(.*?)</b>', r'<strong style="color:#2c3e50;">\1</strong>', para)
+        # Also convert **text** markdown style to bold
+        para = re.sub(r'\*\*(.*?)\*\*', r'<strong style="color:#2c3e50;">\1</strong>', para)
+        # Replace single newlines within a paragraph with <br>
+        para = para.replace("\n", "<br>")
+        body_html += f'<p style="margin:0 0 14px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">{para}</p>\n'
 
-    greeting_html = f'<p style="margin:0 0 16px 0;font-size:14px;color:#2c3e50;">{greeting}</p>' if greeting else ''
+    # Extract greeting (first line if it starts with Dear/Hi/Hello)
+    first_para = paragraphs[0].strip() if paragraphs else ""
+    greeting_html = ""
+    if first_para.lower().startswith(("dear ", "hi ", "hello ")):
+        greeting_html = f'<p style="margin:0 0 16px 0;font-size:15px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;color:#2c3e50;">{first_para}</p>'
+        # Remove greeting from body_html (already shown separately)
+        body_html = body_html.split("</p>", 1)[-1] if "</p>" in body_html else body_html
 
-    lead_company = (lead.get("company_name", "") or "").replace(" ", "%20")
+    # No CTA button
     cta_html = ""
-    if sequence_stage <= 2:
-        cta_html = f'''<tr><td style="padding:0 36px 30px 36px;" align="center">
-      <table cellpadding="0" cellspacing="0"><tr>
-        <td style="background:linear-gradient(135deg,#3498db,#217dbb);border-radius:8px;box-shadow:0 4px 12px rgba(52,152,219,0.3);">
-          <a href="mailto:{email_addr}?subject=Inquiry%20from%20{lead_company}" style="display:inline-block;padding:14px 36px;color:#ffffff;text-decoration:none;font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;font-weight:700;letter-spacing:0.5px;">Request Free Consultation</a>
-        </td>
-      </tr></table>
-      <p style="margin:10px 0 0 0;font-size:11px;color:#95a5a6;font-family:'Segoe UI',Roboto,Arial,sans-serif;">or call directly: <a href="tel:+919082121601" style="color:#3498db;text-decoration:none;font-weight:600;">+91 9082121601</a></p>
-    </td></tr>'''
 
-    html = f'''<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<!--[if mso]><style>body,table,td{{font-family:Segoe UI,Arial,sans-serif !important;}}</style><![endif]-->
-</head>
-<body style="margin:0;padding:0;background:#f0f4f8;-webkit-font-smoothing:antialiased;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:28px 0;">
-<tr><td align="center">
-<table role="presentation" width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);border:1px solid #e8eef3;">
+    # Load template from file
+    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "email-template.html")
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        # Remove the <script> preview block (not needed in actual emails)
+        html = re.sub(r'<script>.*?</script>', '', html, flags=re.DOTALL)
+    except:
+        html = f"<html><body>{greeting_html}{body_html}</body></html>"
+        return html
 
-  <!-- Header Bar -->
-  <tr>
-    <td style="background:linear-gradient(135deg,#3498db 0%,#2176ad 100%);padding:22px 36px;">
-      <table width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td>
-            <div style="font-family:'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:0.3px;">{company_name}</div>
-            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;letter-spacing:0.8px;text-transform:uppercase;">Mechanical Seals &bull; CNC Components &bull; Precision Parts</div>
-          </td>
-          <td align="right" valign="middle">
-            <a href="tel:+919082121601" style="display:inline-block;padding:8px 18px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#ffffff;text-decoration:none;font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;font-weight:600;">&#9742; +91 9082121601</a>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-
-  <!-- Email Body -->
-  <tr>
-    <td style="padding:36px 36px 24px 36px;font-family:'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
-      {greeting_html.replace('font-size:14px', "font-size:15px;font-family:'Segoe UI',Roboto,Arial,sans-serif")}
-      {body_html.replace('font-size:14px', "font-size:14px;font-family:'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif")}
-    </td>
-  </tr>
-
-  <!-- CTA Button -->
-  {cta_html}
-
-  <!-- Signature Block -->
-  <tr>
-    <td style="padding:0 36px 28px 36px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #3498db;padding-top:20px;">
-        <tr>
-          <td width="50%" valign="top">
-            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;font-weight:800;color:#2c3e50;letter-spacing:0.2px;">{contact_name}</div>
-            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;color:#3498db;margin-top:3px;font-weight:600;">{company_name}</div>
-          </td>
-          <td width="50%" valign="top" align="right">
-            <table cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;color:#2c3e50;line-height:2;">
-                  <a href="tel:+919082121601" style="color:#2c3e50;text-decoration:none;font-weight:600;">&#9742;&nbsp; +91 9082121601</a><br>
-                  <a href="mailto:{email_addr}" style="color:#3498db;text-decoration:none;">&#9993;&nbsp; {email_addr}</a><br>
-                  <a href="{website}" style="color:#3498db;text-decoration:none;">&#127760;&nbsp; {website.replace("https://","")}</a>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-
-  <!-- Footer -->
-  <tr>
-    <td style="background:#f8fafb;padding:20px 36px;border-top:1px solid #edf1f5;">
-      <table width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td style="font-family:'Segoe UI',Roboto,Arial,sans-serif;">
-            <div style="font-size:12px;font-weight:700;color:#2c3e50;margin-bottom:4px;">{company_name}</div>
-            <div style="font-size:11px;color:#7f8c8d;line-height:1.7;">
-              Manufacturer of <strong style="color:#5a6c7d;">Mechanical Seals</strong>, <strong style="color:#5a6c7d;">CNC Components</strong> &amp; <strong style="color:#5a6c7d;">Precision Turned Parts</strong><br>
-              Mumbai, Maharashtra, India &nbsp;&bull;&nbsp; GST: 27BWWPM3354A1ZC &nbsp;&bull;&nbsp; <a href="tel:+919082121601" style="color:#3498db;text-decoration:none;font-weight:600;">+91 9082121601</a>
-            </div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding-top:12px;">
-            <table cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Cartridge Seals</td>
-                <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Spring Seals</td>
-                <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Bellow Seals</td>
-                <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Pump Seals</td>
-                <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">CNC Parts</td>
-                <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Seal Repair</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-
-</table>
-{pixel_html}
-</td></tr>
-</table>
-</body>
-</html>'''
+    # Replace template variables
+    html = html.replace("{{company_name}}", company_name)
+    html = html.replace("{{contact_name}}", contact_name)
+    html = html.replace("{{phone}}", phone)
+    html = html.replace("{{email}}", email_addr)
+    html = html.replace("{{website}}", website.replace("https://", ""))
+    html = html.replace("{{greeting}}", greeting_html)
+    html = html.replace("{{body_content}}", body_html)
+    html = html.replace("{{cta_button}}", cta_html)
+    html = html.replace("{{pixel}}", pixel_html)
 
     return html
 
@@ -509,10 +402,16 @@ def _send_or_record(to_email: str, subject: str, body: str,
             # HTML version with tracking pixel
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
-                server.starttls()
-                server.login(SMTP_USER, SMTP_PASSWORD)
-                server.send_message(msg)
+            # Support both SSL (port 465) and TLS (port 587)
+            if SMTP_PORT == 465:
+                with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+                    server.login(SMTP_USER, SMTP_PASSWORD)
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+                    server.starttls()
+                    server.login(SMTP_USER, SMTP_PASSWORD)
+                    server.send_message(msg)
 
             logger.info(f"[Email] SMTP sent → {to_email} via {SMTP_USER}")
             return "sent"

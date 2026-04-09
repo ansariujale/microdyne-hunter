@@ -1,5 +1,5 @@
 """
-MicrodyneHunter v2 — Email Warmup Manager
+FlowLockHunter v2 — Email Warmup Manager
 Tracks daily send volume per domain with ramp-up schedule.
 Persists warmup state in Supabase email_warmup table.
 """
@@ -9,7 +9,7 @@ from datetime import datetime, timezone, date
 
 from config import WARMUP_SCHEDULE, EMAILS_PER_DOMAIN, SENDING_DOMAINS
 
-logger = logging.getLogger("microdynehunter.warmup")
+logger = logging.getLogger("flowlockhunter.warmup")
 
 
 def _get_db():
