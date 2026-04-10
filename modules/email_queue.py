@@ -65,7 +65,7 @@ def _is_junk_email(email: str) -> bool:
     if not email or "@" not in email:
         return True
     # Whitelist: allow specific test emails through
-    WHITELISTED_EMAILS = {"githubthe12@gmail.com", "aujale30@gmail.com"}
+    WHITELISTED_EMAILS = {"githubthe12@gmail.com", "aujale30@gmail.com", "janhavipal353@gmail.com", "marediyao61@gmail.com", "alexgender32@gmail.com", "mizanmarediya04@gmail.com"}
     if email.lower().strip() in WHITELISTED_EMAILS:
         return False
     domain = email.split("@")[-1].lower()

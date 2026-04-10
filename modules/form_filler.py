@@ -497,17 +497,40 @@ async def fill_contact_form(page: Page, lead: dict) -> dict:
 
     # ═══ DIRECT ID-BASED FILL (most reliable — try first) ═══
     try:
+        # The 'subject' field in config now contains the full message
+        msg = data['subject']  # This is the message from admin panel
         direct_map = {
+            # By ID
             '#fullname': data['name'], '#full_name': data['name'], '#full-name': data['name'],
             '#name': data['name'], '#contactname': data['name'], '#contact_name': data['name'],
+            '#your-name': data['name'], '#yourname': data['name'],
             '#email': data['email'], '#contact_email': data['email'], '#emailaddress': data['email'],
+            '#your-email': data['email'], '#youremail': data['email'], '#mail': data['email'],
             '#phone': data['phone'], '#tel': data['phone'], '#mobile': data['phone'],
-            '#contact_phone': data['phone'], '#phonenumber': data['phone'],
-            '#subject': data['subject'], '#subj': data['subject'], '#topic': data['subject'],
-            '#message': data['message'], '#msg': data['message'], '#comment': data['message'],
+            '#contact_phone': data['phone'], '#phonenumber': data['phone'], '#number': data['phone'],
+            '#subject': msg, '#subj': msg, '#topic': msg, '#regarding': msg,
+            '#message': msg, '#msg': msg, '#comment': msg, '#comments': msg,
+            '#inquiry': msg, '#enquiry': msg, '#details': msg, '#description': msg,
+            '#your-message': msg, '#yourmessage': msg, '#requirements': msg,
             '#company': data['company'], '#organization': data['company'],
             '#first_name': data['first_name'], '#firstname': data['first_name'], '#fname': data['first_name'],
             '#last_name': data['last_name'], '#lastname': data['last_name'], '#lname': data['last_name'],
+            # By name attribute (many sites use name= instead of id=)
+            '[name="name"]': data['name'], '[name="fullname"]': data['name'], '[name="full_name"]': data['name'],
+            '[name="your_name"]': data['name'], '[name="contact_name"]': data['name'],
+            '[name="email"]': data['email'], '[name="mail"]': data['email'], '[name="your_email"]': data['email'],
+            '[name="phone"]': data['phone'], '[name="tel"]': data['phone'], '[name="mobile"]': data['phone'],
+            '[name="subject"]': msg, '[name="message"]': msg, '[name="msg"]': msg,
+            '[name="comment"]': msg, '[name="inquiry"]': msg, '[name="enquiry"]': msg,
+            '[name="details"]': msg, '[name="description"]': msg, '[name="requirements"]': msg,
+            '[name="company"]': data['company'], '[name="organization"]': data['company'],
+            # By placeholder (last resort)
+            'input[placeholder="Name"]': data['name'], 'input[placeholder="Full Name"]': data['name'],
+            'input[placeholder="Email"]': data['email'], 'input[placeholder="Email Id"]': data['email'],
+            'input[placeholder="Email Address"]': data['email'],
+            'input[placeholder="Phone"]': data['phone'], 'input[placeholder="Phone Number"]': data['phone'],
+            'input[placeholder="Subject"]': msg,
+            'textarea[placeholder="Message"]': msg, 'textarea[placeholder="Your Message"]': msg,
         }
         direct_filled = 0
         for selector, value in direct_map.items():
@@ -523,8 +546,21 @@ async def fill_contact_form(page: Page, lead: dict) -> dict:
             except:
                 pass
 
-        # If we filled 3+ fields directly, try to submit
-        if direct_filled >= 3:
+        # Also try to fill any visible textarea with the message (catch-all)
+        try:
+            textareas = await page.query_selector_all('textarea')
+            for ta in textareas:
+                if await ta.is_visible():
+                    current_val = await ta.evaluate('el => el.value')
+                    if not current_val:  # Only fill if empty
+                        await ta.fill(msg)
+                        direct_filled += 1
+                        break  # Fill only the first empty textarea
+        except:
+            pass
+
+        # If we filled 2+ fields directly, try to submit
+        if direct_filled >= 2:
             logger.info(f"[Form] Direct fill: {direct_filled} fields filled by ID")
             # Find and click submit button
             submit_selectors = [
@@ -679,6 +715,8 @@ async def fill_contact_form(page: Page, lead: dict) -> dict:
 
         # Fill each field with human-like delays
         filled_count = 0
+        # The 'subject' field now contains the full message from admin panel
+        msg = data['subject']
         value_map = {
             'name': data['name'],
             'first_name': data['first_name'],
@@ -686,8 +724,8 @@ async def fill_contact_form(page: Page, lead: dict) -> dict:
             'email': data['email'],
             'phone': data['phone'],
             'company': data['company'],
-            'subject': data['subject'],
-            'message': data['message'],
+            'subject': msg,      # Use message content for subject fields
+            'message': msg,      # Use same message content for message/textarea fields
             'website': 'https://flowlockoverseas.com',
         }
 
@@ -1052,17 +1090,37 @@ async def run_form_filling(leads: list[dict], max_concurrent: int = 3) -> dict:
             outreach_state["current_lead"] = lead.get("company_name") or lead.get("website_url") or "?"
 
             try:
-                # Timeout per form — 20 seconds max so stop is fast
+                # Timeout per form — 60 seconds max
                 result = await asyncio.wait_for(
                     process_lead_form(browser, lead),
-                    timeout=20
+                    timeout=60
                 )
             except asyncio.TimeoutError:
-                result = {"success": False, "error_message": "Timed out after 20s"}
+                result = {"success": False, "error_message": "Timed out after 60s"}
                 logger.warning(f"Form fill timeout: {lead.get('company_name')}")
+                # Mark lead as failed (timeout cancelled the normal error handler)
+                try:
+                    from datetime import datetime, timezone
+                    update_lead(lead["id"], {
+                        "form_submission_status": "failed",
+                        "form_error_message": "Timed out after 60s",
+                        "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                except:
+                    pass
             except Exception as e:
                 result = {"success": False, "error_message": str(e)[:200]}
                 logger.error(f"Form fill exception: {e}")
+                # Mark lead as failed
+                try:
+                    from datetime import datetime, timezone
+                    update_lead(lead["id"], {
+                        "form_submission_status": "failed",
+                        "form_error_message": str(e)[:200],
+                        "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                except:
+                    pass
 
             if isinstance(result, Exception):
                 stats["failed"] += 1

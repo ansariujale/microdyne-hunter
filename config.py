@@ -167,7 +167,7 @@ FORM_FILL_DATA = {
     'company': 'FlowLock Overseas',
     'email': 'sales@flowlockoverseas.com',
     'phone': '+91-9082717763',
-    'subject': 'Mechanical Seals & Hydraulic Fittings - FlowLock Overseas',
+    'subject': 'We are FlowLock Overseas, a leading supplier of mechanical seals and hydraulic fittings from Mumbai, India. Our product range includes cartridge seals, spring seals, bellow seals, agitator seals, and hydraulic tube fittings in SS316, Hastelloy, and Silicon Carbide. Contact us at sales@flowlockoverseas.com or call +91-9082717763 for a free consultation.',
     'message': (
         'We are FlowLock Overseas, a leading supplier of mechanical seals and '
         'hydraulic fittings from Mumbai, India. We offer high-quality cartridge seals, '

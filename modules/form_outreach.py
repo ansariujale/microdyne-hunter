@@ -178,6 +178,17 @@ async def run_form_outreach_async(batch_size: int = 10) -> dict:
     except Exception as e:
         logger.error(f"Start Batch error: {e}")
         outreach_state["error"] = str(e)[:300]
+        # Auto-mark any stuck "processing" leads as "failed"
+        try:
+            from modules.database import db
+            if db:
+                stuck = db.select("leads", filters={"form_submission_status": "eq.processing"}, columns="id", limit=100)
+                for s in stuck:
+                    update_form_status(s["id"], "failed", error_msg=f"Batch error: {str(e)[:100]}")
+                if stuck:
+                    logger.info(f"Auto-marked {len(stuck)} stuck forms as failed")
+        except:
+            pass
         _finalize()
         return {"error": str(e)}
 
