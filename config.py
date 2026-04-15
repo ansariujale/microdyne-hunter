@@ -127,19 +127,20 @@ EMAILS_PER_DOMAIN = 65  # safe limit per sending domain
 EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Mechanical Seals & Hydraulic Fittings — FlowLock Overseas")
 
 # Email body content (editable from admin panel — supports <b>bold</b> tags)
-EMAIL_BODY = os.getenv("EMAIL_BODY", (
+# NOTE: Do NOT put this in .env — multiline values break dotenv parsing
+EMAIL_BODY = (
     "Dear Sir/Madam,\n\n"
     "We are <b>FlowLock Overseas</b>, a leading supplier of <b>mechanical seals</b> and <b>hydraulic fittings</b> from Mumbai, India.\n\n"
     "Our product range includes <b>cartridge seals</b>, <b>spring seals</b>, <b>bellow seals</b>, agitator seals, "
     "and hydraulic tube fittings in <b>SS316</b>, <b>Hastelloy</b>, and <b>Silicon Carbide</b>.\n\n"
     "Would you be open to a <b>free consultation</b> to discuss your sealing requirements? "
     "We can also send a sample for quality evaluation at no cost."
-))
+)
 
-# Sending email accounts (emails are sent FROM these)
+# Sending email accounts (emails are sent FROM these — 65 emails/day each)
 SENDING_EMAILS = [
-    "sales@flowlockoverseas.com",
     "flowlockoverseas@gmail.com",
+    "sales@flowlockoverseas.com",
 ]
 
 # Sending domains (auto-extracted from emails)

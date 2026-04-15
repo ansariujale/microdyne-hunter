@@ -63,7 +63,7 @@ def clean_website_url(url: str) -> str:
 # HUMAN-LIKE DELAYS
 # ═══════════════════════════════════════════════════════════════
 
-async def human_delay(min_sec: float = 0.5, max_sec: float = 2.0):
+async def human_delay(min_sec: float = 0.2, max_sec: float = 0.5):
     """Random delay to mimic human typing/clicking."""
     await asyncio.sleep(random.uniform(min_sec, max_sec))
 
@@ -170,7 +170,7 @@ async def attempt_captcha_solve(page: Page) -> bool:
             checkbox = recaptcha_frame.locator('.recaptcha-checkbox-border, #recaptcha-anchor, [role="checkbox"]').first
             await checkbox.click(timeout=5000)
             logger.info("Clicked reCAPTCHA checkbox")
-            await asyncio.sleep(3)
+            await asyncio.sleep(1)
 
             # Check if it was solved (green checkmark)
             try:
@@ -190,7 +190,7 @@ async def attempt_captcha_solve(page: Page) -> bool:
         # Fallback: try clicking .g-recaptcha div directly
         try:
             await page.click('.g-recaptcha', timeout=3000)
-            await asyncio.sleep(2)
+            await asyncio.sleep(0.5)
             logger.info("Clicked .g-recaptcha element, proceeding")
             return True
         except Exception:
@@ -203,14 +203,14 @@ async def attempt_captcha_solve(page: Page) -> bool:
             checkbox = hcaptcha_frame.locator('#checkbox, [role="checkbox"], .check').first
             await checkbox.click(timeout=5000)
             logger.info("Clicked hCaptcha checkbox")
-            await asyncio.sleep(3)
+            await asyncio.sleep(1)
             return True
         except Exception as e:
             logger.debug(f"hCaptcha click failed: {e}")
 
         try:
             await page.click('.h-captcha', timeout=3000)
-            await asyncio.sleep(2)
+            await asyncio.sleep(0.5)
             logger.info("Clicked .h-captcha element, proceeding")
             return True
         except Exception:
@@ -229,7 +229,7 @@ async def attempt_captcha_solve(page: Page) -> bool:
         # Try clicking it
         try:
             await page.click('.cf-turnstile', timeout=3000)
-            await asyncio.sleep(3)
+            await asyncio.sleep(1)
             logger.info("Clicked Turnstile, proceeding")
             return True
         except Exception:
@@ -318,7 +318,7 @@ async def find_contact_form(page: Page, base_url: str) -> Optional[str]:
     for path in all_paths:
         url = urljoin(base_url + '/', path)
         try:
-            response = await page.goto(url, wait_until="domcontentloaded", timeout=12000)
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=6000)
             if response and response.status == 200:
                 await human_delay(0.3, 1.0)
                 # Quick 404 check via title
@@ -333,7 +333,7 @@ async def find_contact_form(page: Page, base_url: str) -> Optional[str]:
 
     # Try finding contact link in navigation/footer via JS
     try:
-        await page.goto(base_url, wait_until="domcontentloaded", timeout=15000)
+        await page.goto(base_url, wait_until="domcontentloaded", timeout=8000)
         await human_delay(0.5, 1.0)
         contact_link = await page.evaluate("""() => {
             const contactKeywords = [
@@ -375,7 +375,7 @@ async def find_contact_form(page: Page, base_url: str) -> Optional[str]:
             return null;
         }""")
         if contact_link:
-            await page.goto(contact_link, wait_until="domcontentloaded", timeout=15000)
+            await page.goto(contact_link, wait_until="domcontentloaded", timeout=8000)
             await human_delay(0.5, 1.0)
             if await _page_has_form(page):
                 logger.info(f"Found contact form via navigation link: {contact_link}")
@@ -1006,7 +1006,7 @@ async def process_lead_form(browser: Browser, lead: dict) -> dict:
 
         # Navigate to the form page (if not already there)
         if page.url != form_url:
-            await page.goto(form_url, wait_until="domcontentloaded", timeout=15000)
+            await page.goto(form_url, wait_until="domcontentloaded", timeout=8000)
             await human_delay(0.5, 1.5)
 
         # Fill and submit
@@ -1090,28 +1090,31 @@ async def run_form_filling(leads: list[dict], max_concurrent: int = 3) -> dict:
             outreach_state["current_lead"] = lead.get("company_name") or lead.get("website_url") or "?"
 
             try:
-                # Timeout per form — 60 seconds max
+                # Timeout per form — 120 seconds (2 minutes) max
                 result = await asyncio.wait_for(
                     process_lead_form(browser, lead),
-                    timeout=60
+                    timeout=120
                 )
             except asyncio.TimeoutError:
-                result = {"success": False, "error_message": "Timed out after 60s"}
+                result = {"success": False, "error_message": "Timed out after 2 minutes"}
                 logger.warning(f"Form fill timeout: {lead.get('company_name')}")
-                # Mark lead as failed (timeout cancelled the normal error handler)
                 try:
                     from datetime import datetime, timezone
                     update_lead(lead["id"], {
                         "form_submission_status": "failed",
-                        "form_error_message": "Timed out after 60s",
+                        "form_error_message": "Timed out after 2 minutes",
                         "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
                     })
                 except:
                     pass
+            except asyncio.CancelledError:
+                # User stopped — keep as "processing" so Restart can pick it up
+                result = {"success": False, "error_message": "Stopped by user"}
+                logger.info(f"Form fill cancelled: {lead.get('company_name')} — stays as processing")
+                break  # Stop processing more leads
             except Exception as e:
                 result = {"success": False, "error_message": str(e)[:200]}
                 logger.error(f"Form fill exception: {e}")
-                # Mark lead as failed
                 try:
                     from datetime import datetime, timezone
                     update_lead(lead["id"], {

@@ -62,11 +62,12 @@ def _reset_state():
 
 
 def _finalize():
-    """Mark run as complete."""
+    """Mark run as complete. Processing leads stay as-is for Restart."""
     outreach_state["finished_at"] = datetime.now(timezone.utc).isoformat()
     outreach_state["running"] = False
     outreach_state["restarting"] = False
     outreach_state["current_lead"] = None
+    outreach_state["stop_requested"] = False
 
 
 def get_outreach_status() -> dict:
@@ -295,7 +296,15 @@ def stop_form_outreach() -> dict:
     if not outreach_state["running"]:
         return {"status": "not_running"}
     outreach_state["stop_requested"] = True
-    return {"status": "stop_requested", "message": "Stopping after current form..."}
+    # Keep processing leads as "processing" — user can Restart them later
+    try:
+        from modules.database import db
+        if db:
+            processing = db.count("leads", {"form_submission_status": "eq.processing"})
+            logger.info(f"Stop requested — {processing} leads remain in processing (use Restart to resume)")
+    except:
+        pass
+    return {"status": "stop_requested", "message": "Stopping... Processing leads can be restarted."}
 
 
 def get_dashboard_results(limit: int = 50) -> list[dict]:
