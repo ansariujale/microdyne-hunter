@@ -2601,7 +2601,7 @@ async function loadSequenceTableFast(){
         const subject = s.subject || '—';
         const status = s.delivery_status || 'sent';
         const opened = lead.email_opened ? '<span class="tag tag-green">Yes</span>' : '<span style="color:var(--text-dim)">No</span>';
-        const replied = lead.replied ? '<span class="tag tag-orange">Yes</span>' : '<span style="color:var(--text-dim)">No</span>';
+        const replied = lead.replied ? '<span style="background:rgba(46,204,113,0.12);color:#2ecc71;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">Yes</span>' : '<span style="background:rgba(231,76,60,0.1);color:#e74c3c;padding:2px 8px;border-radius:4px;font-size:11px;">No</span>';
         const sentDate = s.sent_at ? new Date(s.sent_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
         const sentTime = s.sent_at ? new Date(s.sent_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '';
         return '<tr>' +
@@ -3041,7 +3041,9 @@ function applyReportFilters(){
     const repliedBadge = l.replied
       ? '<span style="background:rgba(46,204,113,0.15);color:#2ecc71;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">Yes</span>'
       : '<span style="background:rgba(231,76,60,0.1);color:#e74c3c;padding:2px 8px;border-radius:4px;font-size:11px;">No</span>';
-    const date = l.created_at ? new Date(l.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-';
+    // Show the most recent activity date with time
+    const activityDate = l.replied_at || l.email_sent_at || l.form_last_attempted_at || l.created_at;
+    const date = activityDate ? new Date(activityDate).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
     const domain = l.company_domain || '-';
     const web = l.website_url ? '<a href="'+l.website_url+'" target="_blank" style="color:var(--green);font-size:11px;">'+domain+'</a>' : domain;
     const typeBadge = '<span style="font-size:11px;color:var(--text-muted);">'+(l.lead_type||'-').replace(/_/g,' ')+'</span>';
