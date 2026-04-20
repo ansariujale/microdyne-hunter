@@ -990,7 +990,7 @@ async def process_lead_form(browser: Browser, lead: dict) -> dict:
     page = await context.new_page()
 
     try:
-        # Find the contact form
+        # Find the contact form (page load has its own timeout — not counted in the 2 min)
         form_url = await find_contact_form(page, website)
 
         if not form_url:
@@ -1006,8 +1006,11 @@ async def process_lead_form(browser: Browser, lead: dict) -> dict:
 
         # Navigate to the form page (if not already there)
         if page.url != form_url:
-            await page.goto(form_url, wait_until="domcontentloaded", timeout=8000)
+            await page.goto(form_url, wait_until="domcontentloaded", timeout=30000)
             await human_delay(0.5, 1.5)
+
+        # === WEBSITE LOADED — 2 MINUTE TIMER STARTS NOW ===
+        logger.info(f"[Form] Page loaded: {form_url} — 2 min timer started")
 
         # Fill and submit
         result = await fill_contact_form(page, lead)
@@ -1070,60 +1073,73 @@ async def process_lead_form(browser: Browser, lead: dict) -> dict:
 async def run_form_filling(leads: list[dict], max_concurrent: int = 3) -> dict:
     """
     Run form filling for a batch of leads.
-    Processes one lead at a time with stop check between each.
-    Each form has a 60s timeout so nothing hangs.
+    Each website gets 2 minutes AFTER page loads. Timer starts after load, not before.
+    Uses separate browser per lead to prevent hanging.
+    Moves to next immediately after completion — no waiting.
     """
     from modules.form_outreach import outreach_state
+    import signal
 
     stats = {"total": len(leads), "success": 0, "no_form": 0, "failed": 0, "results": []}
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+    for i, lead in enumerate(leads):
+        # Check stop flag before each form
+        if outreach_state.get("stop_requested"):
+            logger.info(f"Form filling stopped at {i}/{len(leads)}")
+            break
 
-        for i, lead in enumerate(leads):
-            # Check stop flag before each form
-            if outreach_state.get("stop_requested"):
-                logger.info(f"Form filling stopped at {i}/{len(leads)}")
-                break
+        # Update current lead for dashboard
+        company = lead.get("company_name") or lead.get("website_url") or "?"
+        outreach_state["current_lead"] = company
+        logger.info(f"[Form {i+1}/{len(leads)}] Starting: {company}")
 
-            # Update current lead for dashboard
-            outreach_state["current_lead"] = lead.get("company_name") or lead.get("website_url") or "?"
-
-            try:
-                # Timeout per form — 120 seconds (2 minutes) max
-                result = await asyncio.wait_for(
-                    process_lead_form(browser, lead),
-                    timeout=120
+        result = None
+        try:
+            # Launch a FRESH browser for each lead — prevents hanging between sites
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-dev-shm-usage']
                 )
-            except asyncio.TimeoutError:
-                result = {"success": False, "error_message": "Timed out after 2 minutes"}
-                logger.warning(f"Form fill timeout: {lead.get('company_name')}")
+
                 try:
-                    from datetime import datetime, timezone
-                    update_lead(lead["id"], {
-                        "form_submission_status": "failed",
-                        "form_error_message": "Timed out after 2 minutes",
-                        "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
-                    })
-                except:
-                    pass
-            except asyncio.CancelledError:
-                # User stopped — keep as "processing" so Restart can pick it up
-                result = {"success": False, "error_message": "Stopped by user"}
-                logger.info(f"Form fill cancelled: {lead.get('company_name')} — stays as processing")
-                break  # Stop processing more leads
-            except Exception as e:
-                result = {"success": False, "error_message": str(e)[:200]}
-                logger.error(f"Form fill exception: {e}")
-                try:
-                    from datetime import datetime, timezone
-                    update_lead(lead["id"], {
-                        "form_submission_status": "failed",
-                        "form_error_message": str(e)[:200],
-                        "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
-                    })
-                except:
-                    pass
+                    # asyncio.wait_for with 150s total (30s for page load + 120s for form fill)
+                    result = await asyncio.wait_for(
+                        process_lead_form(browser, lead),
+                        timeout=150  # 2.5 min total including page load
+                    )
+                except asyncio.TimeoutError:
+                    result = {"success": False, "error_message": "Timed out — site too slow or form not found"}
+                    logger.warning(f"[Form] Timeout: {company}")
+                    try:
+                        update_lead(lead["id"], {
+                            "form_submission_status": "failed",
+                            "form_error_message": "Timed out — site too slow",
+                            "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                    except:
+                        pass
+                finally:
+                    # Force close browser — this kills any hanging page
+                    try:
+                        await browser.close()
+                    except:
+                        pass
+
+        except asyncio.CancelledError:
+            logger.info(f"[Form] Cancelled: {company}")
+            break
+        except Exception as e:
+            result = {"success": False, "error_message": str(e)[:200]}
+            logger.error(f"[Form] Error: {company} — {e}")
+            try:
+                update_lead(lead["id"], {
+                    "form_submission_status": "failed",
+                    "form_error_message": str(e)[:200],
+                    "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except:
+                pass
 
             if isinstance(result, Exception):
                 stats["failed"] += 1
