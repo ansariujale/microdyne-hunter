@@ -16,6 +16,23 @@ from modules.ai_client import ai_generate, is_ai_available
 
 logger = logging.getLogger("flowlockhunter.variants")
 
+def _htmlish_to_text(s: str) -> str:
+    if not s:
+        return ""
+    s = re.sub(r"</p\s*>", "\n\n", s, flags=re.IGNORECASE)
+    s = re.sub(r"<br\s*/?>", "\n", s, flags=re.IGNORECASE)
+    s = re.sub(r"</?b\s*>", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"</?strong\s*>", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"<[^>]+>", "", s)
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    s = re.sub(r"\n{3,}", "\n\n", s).strip()
+    return s
+
+def _strip_tags(s: str) -> str:
+    if not s:
+        return ""
+    return re.sub(r"<[^>]+>", "", s).strip()
+
 
 # ═══════════════════════════════════════════════════════════════
 # STAGE CONFIGURATION
@@ -103,6 +120,16 @@ def generate_variants(lead: dict, sequence_stage: int = 1) -> list[dict]:
     Falls back to template if AI unavailable.
     """
     stage = STAGE_CONFIG.get(sequence_stage, STAGE_CONFIG[1])
+
+    if sequence_stage == 1:
+        import config as _cfg
+        subject = _strip_tags(getattr(_cfg, "EMAIL_SUBJECT", ""))
+        body = _htmlish_to_text(getattr(_cfg, "EMAIL_BODY", ""))
+        if not subject:
+            subject = "Mechanical Seals & Hydraulic Fittings — FlowLock Overseas"
+        if not body:
+            body = "Dear Sir/Madam,\n\nWe are FlowLock Overseas.\n\nWould you be open to a quick call?"
+        return [{"subject": subject[:70], "body": body, "angle": "admin"}]
 
     if not is_ai_available():
         logger.info("[Variants] No AI provider configured — using template fallback")

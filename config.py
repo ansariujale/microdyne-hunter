@@ -4,6 +4,7 @@ All API keys, thresholds, and settings in one place.
 """
 
 import os
+import base64
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -55,7 +56,6 @@ FLOWLOCK = {
     "materials": "SS316, Hastelloy, Alloy 20, Silicon Carbide, Tungsten Carbide, PTFE, Viton",
     "coverage": "Global export from India — serving 50+ countries",
     "usp": "Reliable mechanical seal solutions & hydraulic fittings — reduce maintenance costs 30-50% with expert refurbishment",
-    "hook": "Free consultation & sample — prove quality before any commitment",
 }
 
 # Backward-compatible alias
@@ -128,7 +128,7 @@ EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Mechanical Seals & Hydraulic Fitting
 
 # Email body content (editable from admin panel — supports <b>bold</b> tags)
 # NOTE: Do NOT put this in .env — multiline values break dotenv parsing
-EMAIL_BODY = (
+_DEFAULT_EMAIL_BODY = (
     "Dear Sir/Madam,\n\n"
     "We are <b>FlowLock Overseas</b>, a leading supplier of <b>mechanical seals</b> and <b>hydraulic fittings</b> from Mumbai, India.\n\n"
     "Our product range includes <b>cartridge seals</b>, <b>spring seals</b>, <b>bellow seals</b>, agitator seals, "
@@ -136,6 +136,17 @@ EMAIL_BODY = (
     "Would you be open to a <b>free consultation</b> to discuss your sealing requirements? "
     "We can also send a sample for quality evaluation at no cost."
 )
+
+_email_body_b64 = os.getenv("EMAIL_BODY_B64", "")
+_email_body_env = os.getenv("EMAIL_BODY", "")
+EMAIL_BODY = _DEFAULT_EMAIL_BODY
+if _email_body_b64:
+    try:
+        EMAIL_BODY = base64.b64decode(_email_body_b64.encode("ascii")).decode("utf-8")
+    except Exception:
+        EMAIL_BODY = _DEFAULT_EMAIL_BODY
+elif _email_body_env:
+    EMAIL_BODY = _email_body_env.replace("\\n", "\n")
 
 # Sending email accounts (emails are sent FROM these — 65 emails/day each)
 SENDING_EMAILS = [
@@ -162,14 +173,14 @@ DAILY_FORM_TARGET = 1000
 
 # Contact data used when filling website forms
 FORM_FILL_DATA = {
-    'name': 'FlowLock Overseas',
-    'first_name': 'FlowLock',
-    'last_name': 'Overseas',
-    'company': 'FlowLock Overseas',
-    'email': 'sales@flowlockoverseas.com',
-    'phone': '+91-9082717763',
-    'subject': 'We are FlowLock Overseas, a leading supplier of mechanical seals and hydraulic fittings from Mumbai, India. Our product range includes cartridge seals, spring seals, bellow seals, agitator seals, and hydraulic tube fittings in SS316, Hastelloy, and Silicon Carbide. Contact us at sales@flowlockoverseas.com or call +91-9082717763 for a free consultation.',
-    'message': (
+    'name': os.getenv('FORM_NAME', 'FlowLock Overseas'),
+    'first_name': os.getenv('FORM_FIRST_NAME', 'FlowLock'),
+    'last_name': os.getenv('FORM_LAST_NAME', 'Overseas'),
+    'company': os.getenv('FORM_COMPANY', 'FlowLock Overseas'),
+    'email': os.getenv('FORM_EMAIL', 'sales@flowlockoverseas.com'),
+    'phone': os.getenv('FORM_PHONE', '+91-9082717763'),
+    'subject': os.getenv('FORM_SUBJECT', 'We are FlowLock Overseas, a leading supplier of mechanical seals and hydraulic fittings from Mumbai, India. Our product range includes cartridge seals, spring seals, bellow seals, agitator seals, and hydraulic tube fittings in SS316, Hastelloy, and Silicon Carbide. Contact us at sales@flowlockoverseas.com or call +91-9082717763 for a free consultation.').replace('\\n', '\n'),
+    'message': os.getenv('FORM_MESSAGE', (
         'We are FlowLock Overseas, a leading supplier of mechanical seals and '
         'hydraulic fittings from Mumbai, India. We offer high-quality cartridge seals, '
         'spring seals, bellow seals, agitator seals, and hydraulic tube fittings in '
@@ -178,7 +189,7 @@ FORM_FILL_DATA = {
         'your maintenance costs by 30-50%. '
         'Contact us at sales@flowlockoverseas.com or call +91-9082717763 '
         'for a free consultation and sample.'
-    ),
+    )).replace('\\n', '\n'),
 }
 
 FORM_PATHS_TO_TRY = [

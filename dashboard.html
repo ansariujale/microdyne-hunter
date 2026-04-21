@@ -46,7 +46,7 @@
     --red:#e74c3c;--red-bg:rgba(231,76,60,0.08);--red-border:rgba(231,76,60,0.18);
     --pink:#e84393;
     /* Utility */
-    --overlay:rgba(0,0,0,0.25);--row-hover:rgba(52,152,219,0.04);--row-border:rgba(0,0,0,0.06);
+    --overlay:rgba(0,0,0,0.25);--row-hover:rgba(11, 13, 14, 0.04);--row-border:rgba(0,0,0,0.06);
     --shadow-sm:0 1px 3px rgba(0,0,0,0.08);--shadow-md:0 4px 16px rgba(0,0,0,0.1);
     --btn-text-on-green:#fff;--btn-text-on-red:#fff;--btn-text-on-blue:#fff;
     --chart-grid:rgba(0,0,0,0.07);--chart-label:#7f8c8d;--chart-legend:#4a6274;
@@ -775,11 +775,6 @@
           <div class="stat-label">Replies</div>
           <div class="stat-value" id="statReplies">0</div>
         </div>
-        <div class="stat-card cyan">
-          <div class="stat-label">Closed Deals</div>
-          <div class="stat-value" id="statClosed">0</div>
-          <div class="stat-change up" id="statMRR">$0 MRR</div>
-        </div>
       </div>
 
       <!-- BOTTOM: HOT LEADS + LIVE ACTIVITY -->
@@ -830,7 +825,6 @@
           <option value="emailed">Emailed</option>
           <option value="replied">Replied</option>
           <option value="interested">Interested</option>
-          <option value="closed">Closed</option>
         </select>
         <div style="display:flex;align-items:center;gap:4px;">
           <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Date:</label>
@@ -1137,7 +1131,7 @@
     <!-- ═══════ FUNNEL ═══════ -->
     <div class="page" id="page-funnel">
       <div class="page-title">Sales Funnel</div>
-      <div class="page-sub">Conversion pipeline analytics — track leads from discovery to closed deals</div>
+      <div class="page-sub">Conversion pipeline analytics — track leads from discovery to results</div>
 
       <!-- Category Tabs -->
       <div class="funnel-tabs" id="funnelTabs">
@@ -1332,7 +1326,7 @@ We are FlowLock Overseas, a Mumbai-based manufacturer specializing in mechanical
             <input class="input" style="width:100%" value="200" type="number" id="settingPauseCountry">
           </div>
           <div class="setting-group">
-            <div class="setting-label">Min Close Rate for Lead Type</div>
+            <div class="setting-label">Min Reply Rate for Lead Type</div>
             <input class="input" style="width:100%" value="0.5" type="number" step="0.1" id="settingMinClose">
             <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">% — deprioritize below this after 500+ leads</div>
           </div>
@@ -1464,7 +1458,7 @@ We are FlowLock Overseas, a Mumbai-based manufacturer specializing in mechanical
     <div class="chat-suggestions-grid">
       <div class="chat-suggestion cat-analyze" onclick="useSuggestion('Give me a full project status report')">Project status</div>
       <div class="chat-suggestion cat-email" onclick="useSuggestion('Why are my reply rates low? Analyze and give me actionable fixes')">Why low replies?</div>
-      <div class="chat-suggestion cat-leads" onclick="useSuggestion('Show me the top performing segments by close rate')">Top segments</div>
+      <div class="chat-suggestion cat-leads" onclick="useSuggestion('Show me the top performing segments by reply rate')">Top segments</div>
       <div class="chat-suggestion cat-action" onclick="useSuggestion('Which countries should I pause and why?')">Pause advice</div>
       <div class="chat-suggestion cat-leads" onclick="useSuggestion('Get me new leads — find industrial seal buyers in UAE and UK')">Find leads</div>
       <div class="chat-suggestion cat-email" onclick="useSuggestion('Show email domain health and which domains need rotation')">Domain health</div>
@@ -1717,7 +1711,14 @@ function showPage(name, el){
   else if(event && event.currentTarget) event.currentTarget.classList.add('active');
   if(name==='leads') renderLeads();
   if(name==='intelligence') { loadReportData(); }
-  if(name==='sources') renderSources();
+  if(name==='sources') {
+    renderSources();
+    if(window._sourcesRefreshInterval) clearInterval(window._sourcesRefreshInterval);
+    window._sourcesRefreshInterval = setInterval(()=>{
+      if(document.getElementById('page-sources').classList.contains('active')) renderSources();
+      else { clearInterval(window._sourcesRefreshInterval); window._sourcesRefreshInterval = null; }
+    }, 10000);
+  }
   if(name==='funnel') renderFunnel();
   if(name==='email'){
     renderEmailPage();
@@ -1825,11 +1826,9 @@ function renderDashboardFromAPI(data){
   animateStat(document.getElementById('statFormsFilled'), (s.forms_filled||0).toLocaleString());
   animateStat(document.getElementById('statReplies'), (s.replies||0).toLocaleString());
   animateStat(document.getElementById('statInterested'), (s.interested||0).toLocaleString());
-  animateStat(document.getElementById('statClosed'), (s.closed||0).toLocaleString());
   animateStat(document.getElementById('statLeadsChange'), '+'+(data.today?.leads_added||0)+' today');
   animateStat(document.getElementById('statEmailsChange'), '+'+(data.today?.emails_sent||0)+' today');
   animateStat(document.getElementById('statFormsChange'), '+'+(data.today?.forms_filled || 0)+ ' today');
-  animateStat(document.getElementById('statMRR'), '$'+(s.mrr||0).toLocaleString()+' MRR');
   document.getElementById('navLeadCount').textContent = (data.total_leads||0).toLocaleString();
   document.getElementById('navEmailCount').textContent = (s.emailed||0).toLocaleString();
   document.getElementById('navFormCount').textContent = (s.forms_filled||0).toLocaleString();
@@ -1851,8 +1850,6 @@ function renderDashboard(){
   const forms = allLeads.filter(l=>l.form_filled).length;
   const replies = allLeads.filter(l=>l.replied).length;
   const interested = allLeads.filter(l=>l.interested).length;
-  const closed = allLeads.filter(l=>l.closed).length;
-  const revenue = allLeads.reduce((s,l)=>s+(l.revenue_monthly||0),0);
   const today = new Date().toISOString().slice(0,10);
   const todayLeads = allLeads.filter(l=>l.created_at&&l.created_at.startsWith(today)).length;
   const todayEmails = allLeads.filter(l=>l.email_sent && l.email_sent_at.startsWith(today)).length;
@@ -1862,11 +1859,9 @@ function renderDashboard(){
   animateStat(document.getElementById('statFormsFilled'), forms.toLocaleString());
   animateStat(document.getElementById('statReplies'), replies.toLocaleString());
   animateStat(document.getElementById('statInterested'), interested.toLocaleString());
-  animateStat(document.getElementById('statClosed'), closed.toLocaleString());
   animateStat(document.getElementById('statEmailsChange'), '+'+todayEmails+' today');
   animateStat(document.getElementById('statLeadsChange'), '+'+todayLeads+' today');
   animateStat(document.getElementById('statFormsChange'), '+',todayForms+' today');
-  animateStat(document.getElementById('statMRR'), '$'+revenue.toLocaleString()+' MRR');
   document.getElementById('navLeadCount').textContent = total.toLocaleString();
   document.getElementById('navEmailCount').textContent = emailed.toLocaleString();
   document.getElementById('navFormCount').textContent = forms.toLocaleString();
@@ -1899,6 +1894,7 @@ function renderHotLeadsFromAPI(hotLeads){
 
 let lastSeenLogTime = '';
 let activityFeedInitialized = false;
+const _toastSeen = new Set();
 
 async function renderActivityFeed(){
   if(serverConnected){
@@ -1936,8 +1932,20 @@ function showToast(title, msg, type='reply'){
   },8000);
 }
 
+function _showToastOnce(key, title, msg, type='reply'){
+  if(!key) return showToast(title, msg, type);
+  if(_toastSeen.has(key)) return;
+  _toastSeen.add(key);
+  showToast(title, msg, type);
+  // keep memory bounded
+  if(_toastSeen.size > 200){
+    const first = _toastSeen.values().next().value;
+    if(first) _toastSeen.delete(first);
+  }
+}
+
 function checkForNewToasts(logs){
-  if(!logs || !logs.length || !activityFeedInitialized) return;
+  if(!logs || !logs.length) return;
   // Check newest logs for reply events
   for(let i=0; i<Math.min(logs.length,5); i++){
     const log = logs[i];
@@ -1945,10 +1953,13 @@ function checkForNewToasts(logs){
     if(key === lastSeenLogTime) break;
     const data = log.data || {};
     if(data.type === 'reply_received'){
-      showToast('New Reply!', `${data.sender||'Unknown'} (${data.company||''}) replied to your email`, 'reply');
+      _showToastOnce(key, 'New Reply!', `${data.sender||'Unknown'} (${data.company||''}) replied to your email`, 'reply');
+    }
+    if(data.type === 'email_opened'){
+      _showToastOnce(key, 'Email Opened!', `${data.recipient||'A lead'} opened your email`, 'reply');
     }
     if(data.type === 'replies_summary' && data.count > 0){
-      showToast('Replies Detected', `${data.count} new replies matched to leads`, 'reply');
+      _showToastOnce(key, 'Replies Detected', `${data.count} new replies matched to leads`, 'reply');
     }
   }
 }
@@ -2208,7 +2219,6 @@ function filterLeads(){
     if(status==='emailed' && !l.email_sent) return false;
     if(status==='replied' && !l.replied) return false;
     if(status==='interested' && !l.interested) return false;
-    if(status==='closed' && !l.closed) return false;
     // Date filter — match selected date (dd-mm-yyyy format picker gives yyyy-mm-dd)
     if(dateVal && l.created_at){
       const leadDate = new Date(l.created_at).toISOString().split('T')[0];
@@ -2229,7 +2239,7 @@ function renderLeads(){
   const tbody = document.getElementById('leadsTableBody');
   tbody.innerHTML = page.map(l=>{
     const scoreColor = l.score>=70?'var(--green)':l.score>=40?'var(--yellow)':'var(--red)';
-    const statusTag = l.closed?'<span class="tag tag-green">Closed</span>':l.interested?'<span class="tag tag-orange">Interested</span>':l.replied?'<span class="tag tag-green">Replied</span>':l.email_sent?'<span class="tag tag-purple">Emailed</span>':'<span class="tag" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);">New</span>';
+    const statusTag = l.interested?'<span class="tag tag-orange">Interested</span>':l.replied?'<span class="tag tag-green">Replied</span>':l.email_sent?'<span class="tag tag-purple">Emailed</span>':'<span class="tag" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);">New</span>';
     const keywordDisplay = (l.keyword_used||'').replace(/\s+(UAE|UK|US|India|Germany|France|Netherlands|South Africa|Nigeria|Kenya|Saudi Arabia|Singapore|Malaysia|Philippines|Bangladesh|Pakistan|Turkey|Egypt|Ghana|Tanzania|Brazil|Mexico|Colombia)$/i,'');
     const webUrl = l.website_url || '';
     const webDisplay = webUrl ? '<a href="'+webUrl+'" target="_blank" style="color:var(--green);font-size:11px;text-decoration:none;" title="'+webUrl+'">'+(l.company_domain||webUrl.replace('https://','').replace('http://','').split('/')[0])+'</a>' : '<span style="color:var(--text-dim)">\u2014</span>';
@@ -2254,7 +2264,7 @@ function prevPage(){if(currentPage>1){currentPage--;renderLeads();}}
 function nextPage(){if(currentPage<Math.ceil(filteredLeads.length/PAGE_SIZE)){currentPage++;renderLeads();}}
 
 function exportLeads(){
-  const headers = ['company_name','company_domain','contact_name','contact_email','country','state','city','keyword_used','lead_type','source','score','email_sent','form_filled','replied','closed','revenue_monthly'];
+  const headers = ['company_name','company_domain','contact_name','contact_email','country','state','city','keyword_used','lead_type','source','score','email_sent','form_filled','replied','revenue_monthly'];
   const csv = [headers.join(','),...filteredLeads.map(l=>headers.map(h=>'"'+(l[h]||'')+'"').join(','))].join('\n');
   const blob = new Blob([csv],{type:'text/csv'});
   const a = document.createElement('a');
@@ -3035,9 +3045,11 @@ function applyReportFilters(){
     const openedBadge = l.email_opened
       ? '<span style="background:rgba(46,204,113,0.15);color:#2ecc71;padding:2px 8px;border-radius:4px;font-size:11px;">Opened</span>'
       : (l.email_sent ? '<span style="color:var(--text-dim);font-size:11px;">Not yet</span>' : '<span style="color:var(--text-dim);font-size:11px;">-</span>');
-    const formBadge = l.form_filled
-      ? '<span style="background:rgba(46,134,193,0.15);color:#2e86c1;padding:2px 8px;border-radius:4px;font-size:11px;">Filled</span>'
-      : '<span style="color:var(--text-dim);font-size:11px;">-</span>';
+    const formBadge = l.form_submission_status === 'failed'
+      ? '<span style="background:rgba(231,76,60,0.12);color:#e74c3c;padding:2px 8px;border-radius:4px;font-size:11px;">Failed</span>'
+      : (l.form_filled || l.form_submission_status === 'success'
+        ? '<span style="background:rgba(46,204,113,0.15);color:#2ecc71;padding:2px 8px;border-radius:4px;font-size:11px;">Filled</span>'
+        : '<span style="color:var(--text-dim);font-size:11px;">-</span>');
     const repliedBadge = l.replied
       ? '<span style="background:rgba(46,204,113,0.15);color:#2ecc71;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">Yes</span>'
       : '<span style="background:rgba(231,76,60,0.1);color:#e74c3c;padding:2px 8px;border-radius:4px;font-size:11px;">No</span>';
@@ -3102,7 +3114,6 @@ function downloadReportPDF(){
   const emailsSent = _rptData.filter(l=>l.email_sent).length;
   const formsFilled = _rptData.filter(l=>l.form_filled).length;
   const replies = _rptData.filter(l=>l.replied).length;
-  const closed = _rptData.filter(l=>l.closed).length;
   const dateStr = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
 
   let tableRows = filtered.map((l,i) =>
@@ -3137,7 +3148,6 @@ function downloadReportPDF(){
     '<div class="summary-item"><div class="val">'+emailsSent+'</div><div class="lbl">Emails Sent</div></div>' +
     '<div class="summary-item"><div class="val">'+formsFilled+'</div><div class="lbl">Forms Filled</div></div>' +
     '<div class="summary-item"><div class="val">'+replies+'</div><div class="lbl">Replies</div></div>' +
-    '<div class="summary-item"><div class="val">'+closed+'</div><div class="lbl">Closed</div></div>' +
     '</div>' +
     '<table><thead><tr>' +
     '<th>#</th><th>Company</th><th>Email</th><th>Country</th><th>Type</th><th>Email Sent</th><th>Opened</th><th>Form Filled</th><th>Replied</th>' +
@@ -3396,20 +3406,30 @@ function renderIntelligenceFromAPI(segments){
 // ═══════════════════════════════════════════════════════════════
 async function renderSources(){
   let sources = [];
-  if(serverConnected){
-    const data = await api('/api/sources');
-    if(data && data.sources) sources = data.sources;
-  } else {
-    sources = generateDemoSources();
+  try{
+    if(serverConnected){
+      const data = await api('/api/sources');
+      if(data && data.sources) sources = data.sources;
+    } else {
+      sources = generateDemoSources();
+    }
+  }catch(_e){
+    sources = [];
   }
 
   document.getElementById('srcActive').textContent = sources.filter(s=>s.status==='active').length;
   document.getElementById('srcExhausted').textContent = sources.filter(s=>s.status==='exhausted').length;
   document.getElementById('srcPaused').textContent = sources.filter(s=>s.status==='paused').length;
 
+  if(!sources.length){
+    document.getElementById('sourceTableBody').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:14px;">No source data yet. Start trigger and run scraping.</td></tr>';
+    return;
+  }
+
   document.getElementById('sourceTableBody').innerHTML = sources.slice(0,30).map(s=>{
     const st = s.status==='active'?'tag-green':s.status==='exhausted'?'tag-orange':'tag-red';
-    return `<tr><td><span class="tag tag-purple">${s.source}</span></td><td style="font-family:'JetBrains Mono',monospace;font-size:11px">${s.keyword}</td><td>${s.country}</td><td>${s.total_found}</td><td>${s.last_batch_new}</td><td><span class="tag ${st}">${s.status}</span></td><td style="font-size:10px;color:var(--text-dim)">${new Date(s.last_scraped).toLocaleDateString()}</td></tr>`;
+    const last = s.last_scraped ? new Date(s.last_scraped).toLocaleDateString() : '-';
+    return `<tr><td><span class="tag tag-purple">${s.source||'-'}</span></td><td style="font-family:'JetBrains Mono',monospace;font-size:11px">${s.keyword||'-'}</td><td>${s.country||'-'}</td><td>${s.total_found||0}</td><td>${s.last_batch_new||0}</td><td><span class="tag ${st}">${s.status||'active'}</span></td><td style="font-size:10px;color:var(--text-dim)">${last}</td></tr>`;
   }).join('');
 }
 
@@ -3492,8 +3512,7 @@ async function renderFunnel(){
   const emailNotOpened = Math.max(0, emailed - opened);
   const emailOpenedNotReplied = Math.max(0, opened - replied);
   const emailRepliedNotInterested = Math.max(0, replied - interested);
-  const emailInterestedNotClosed = Math.max(0, interested - closed);
-  const convRate = total>0?(closed/total*100).toFixed(1):'0';
+  const convRate = total>0?(interested/total*100).toFixed(1):'0';
   const replyRate = emailed>0?(replied/emailed*100).toFixed(1):'0';
   const openRate = emailed>0?(opened/emailed*100).toFixed(1):'0';
 
@@ -3506,10 +3525,9 @@ async function renderFunnel(){
       {label:'Opened',short:'Opened',value:opened},
       {label:'Replied',short:'Replied',value:replied},
       {label:'Interested',short:'Interested',value:interested},
-      {label:'Closed',short:'Closed',value:closed},
     ],
     form:{labels:['Submitted','Failed','No Form Found','Processing'],values:[formSuccess,formFailed,formNoForm,formProcessing],total:formTotal},
-    email:{labels:['Sent (Unopened)','Opened','Replied','Interested','Closed','Bounced/Failed'],values:[emailNotOpened,emailOpenedNotReplied,emailRepliedNotInterested,emailInterestedNotClosed,closed,0],total:emailed},
+    email:{labels:['Sent (Unopened)','Opened','Replied','Interested','Bounced/Failed'],values:[emailNotOpened,emailOpenedNotReplied,emailRepliedNotInterested,interested,0],total:emailed},
     stats:{total,qualified,emailed,formFilled,opened,replied,interested,closed,revenue,convRate,replyRate,openRate,formTotal}
   };
 
@@ -3619,7 +3637,7 @@ function _renderFunnelChart(){
 
       detail.innerHTML = '<div class="funnel-summary-stats">'+[
         {l:'Total Leads',v:st.total.toLocaleString(),s:'In pipeline'},
-        {l:'Conversion',v:st.convRate+'%',s:st.closed+' closed deals'},
+        {l:'Conversion',v:st.convRate+'%',s:st.interested+' interested leads'},
         {l:'Reply Rate',v:st.replyRate+'%',s:st.replied+' replies'},
         {l:'Revenue',v:'$'+st.revenue.toLocaleString(),s:'Monthly MRR'},
       ].map(s=>`<div class="funnel-summary-stat"><div class="fss-label">${s.l}</div><div class="fss-value">${s.v}</div><div class="fss-sub">${s.s}</div></div>`).join('')+'</div>';
@@ -3707,7 +3725,7 @@ function _renderFunnelChart(){
         {l:'Total Sent',v:st.emailed.toLocaleString(),s:'Emails delivered'},
         {l:'Open Rate',v:st.openRate+'%',s:st.opened+' opened'},
         {l:'Reply Rate',v:st.replyRate+'%',s:st.replied+' replies'},
-        {l:'Closed',v:st.closed.toLocaleString(),s:'Won deals'},
+        {l:'Interested',v:st.interested.toLocaleString(),s:'Potential deals'},
       ].map(s=>`<div class="funnel-summary-stat"><div class="fss-label">${s.l}</div><div class="fss-value">${s.v}</div><div class="fss-sub">${s.s}</div></div>`).join('')+'</div>'
       +'<div class="funnel-detail-grid">'+ed.labels.map((label,i)=>{
         const v=ed.values[i];const p=totalVal>0?(v/totalVal*100).toFixed(1):'0';const ic=emailIcons[i];
@@ -3869,6 +3887,9 @@ async function refreshDashboardData(){
     }
     renderDashboardFromAPI(data);
     renderLeads();
+    if(document.getElementById('page-sources').classList.contains('active')){
+      await renderSources();
+    }
   }
 }
 
@@ -4656,7 +4677,6 @@ async function getDemoChatReply(msg){
   const emails = document.getElementById('statEmailsSent')?.textContent || '0';
   const forms = document.getElementById('statFormsFilled')?.textContent || '0';
   const replies = document.getElementById('statReplies')?.textContent || '0';
-  const closed = document.getElementById('statClosed')?.textContent || '0';
   const running = agentRunning;
 
   if(lower.includes('status') || lower.includes('report') || lower.includes('how') && lower.includes('going') || lower === '/status'){
@@ -4668,7 +4688,6 @@ async function getDemoChatReply(msg){
 <div class="chat-data-row"><span class="chat-data-label">Emails Sent</span><span class="chat-data-value blue">${emails}</span></div>
 <div class="chat-data-row"><span class="chat-data-label">Forms Filled</span><span class="chat-data-value">${forms}</span></div>
 <div class="chat-data-row"><span class="chat-data-label">Replies</span><span class="chat-data-value green">${replies}</span></div>
-<div class="chat-data-row"><span class="chat-data-label">Closed Deals</span><span class="chat-data-value green">${closed}</span></div>
 </div>
 
 The pipeline is ${running ? 'actively processing leads through all stages' : 'currently idle — start it to begin outreach'}. ${parseInt(replies) > 0 ? 'You have active replies to follow up on.' : 'No replies yet — check domain health and email content.'}`;
@@ -4711,7 +4730,7 @@ Here are the most common reasons for low reply rates and fixes:
 <div class="chat-data-row"><span class="chat-data-label">India — Reseller</span><span class="chat-data-value red">Low — consider pause</span></div>
 </div>
 
-**Recommendations:** Double down on UAE and UK industrial seal segments. Apollo leads have better email quality. Consider pausing segments with <0.5% close rate after 500+ leads.
+**Recommendations:** Double down on UAE and UK industrial seal segments. Apollo leads have better email quality. Consider pausing segments with <0.5% reply rate after 500+ leads.
 
 <div class="chat-actions">
 <div class="chat-action-btn primary" onclick="showPage('intelligence')">View Intelligence</div>
@@ -4765,7 +4784,6 @@ To find new leads, the agent scrapes from multiple sources:
 <div class="chat-data-row"><span class="chat-data-label">Qualified (40+)</span><span class="chat-data-value blue">~${Math.round(parseInt(leads.replace(/,/g,''))*0.65)||0}</span></div>
 <div class="chat-data-row"><span class="chat-data-label">Contacted</span><span class="chat-data-value">${emails}</span></div>
 <div class="chat-data-row"><span class="chat-data-label">Replied</span><span class="chat-data-value green">${replies}</span></div>
-<div class="chat-data-row"><span class="chat-data-label">Closed</span><span class="chat-data-value green">${closed}</span></div>
 </div>
 
 <div class="chat-actions">
@@ -4780,7 +4798,7 @@ The auto-optimization module pauses segments that aren't converting:
 
 **Rules Applied:**
 - Countries with **0 closes after 200+ leads** → auto-pause
-- Lead types with **<0.5% close rate after 500+ leads** → deprioritize
+- Lead types with **<0.5% reply rate after 500+ leads** → deprioritize
 - Sources with **<1% reply rate after 1,000+ sends** → reduce volume
 
 Check the Intelligence tab for real-time segment data. In live mode, I'll tell you exactly which countries to pause based on your actual data.
@@ -4833,7 +4851,6 @@ ${fp > 0 ? `<strong>${fp} forms stuck in processing</strong> — use the Restart
   if(lower.includes('email') && (lower.includes('total') || lower.includes('status') || lower.includes('how many') || lower.includes('count') || lower.includes('marketing') || lower.includes('sent'))){
     const el = parseInt(emails.replace(/,/g,''))||0;
     const rl = parseInt(replies.replace(/,/g,''))||0;
-    const cl = parseInt(closed.replace(/,/g,''))||0;
     const rr = el>0 ? (rl/el*100).toFixed(1) : '0';
     return `<strong>Email Marketing Summary</strong>
 
@@ -4844,7 +4861,6 @@ ${fp > 0 ? `<strong>${fp} forms stuck in processing</strong> — use the Restart
 <tr><td>Opened</td><td><strong>—</strong></td><td>Check tracking</td></tr>
 <tr><td>Replied</td><td><strong>${rl}</strong></td><td><span style="color:${parseFloat(rr)>3?'var(--green)':'var(--red)'}">${rr}%</span></td></tr>
 <tr><td>Interested</td><td><strong>—</strong></td><td>—</td></tr>
-<tr><td>Closed Deals</td><td><strong>${cl}</strong></td><td><span style="color:var(--green)">${el>0?(cl/el*100).toFixed(1):'0'}%</span></td></tr>
 </tbody>
 </table>
 
@@ -4860,7 +4876,6 @@ ${fp > 0 ? `<strong>${fp} forms stuck in processing</strong> — use the Restart
     const el = parseInt(emails.replace(/,/g,''))||0;
     const fl = parseInt(forms.replace(/,/g,''))||0;
     const rl = parseInt(replies.replace(/,/g,''))||0;
-    const cl = parseInt(closed.replace(/,/g,''))||0;
     const tl = parseInt(leads.replace(/,/g,''))||0;
     return `<strong>Complete Project Overview</strong>
 
@@ -4871,7 +4886,6 @@ ${fp > 0 ? `<strong>${fp} forms stuck in processing</strong> — use the Restart
 <tr><td>Emails Sent</td><td><strong>${el.toLocaleString()}</strong></td><td><span style="color:var(--blue)">Delivered</span></td></tr>
 <tr><td>Forms Submitted</td><td><strong>${fl}</strong></td><td><span style="color:var(--purple)">Completed</span></td></tr>
 <tr><td>Replies</td><td><strong>${rl}</strong></td><td><span style="color:var(--cyan)">Received</span></td></tr>
-<tr><td>Closed Deals</td><td><strong>${cl}</strong></td><td><span style="color:var(--green)">Won</span></td></tr>
 <tr><td>Reply Rate</td><td><strong>${el>0?(rl/el*100).toFixed(1):'0'}%</strong></td><td>${parseFloat(el>0?(rl/el*100).toFixed(1):'0')>3?'<span style="color:var(--green)">Good</span>':'<span style="color:var(--red)">Needs work</span>'}</td></tr>
 </tbody>
 </table>
@@ -4918,17 +4932,30 @@ Type <code>/help</code> to see all slash commands, or just ask me anything in pl
 // REPLY TOAST POLLING — checks DB directly for new replies
 // ═══════════════════════════════════════════════════════════════
 let lastReplyCount = -1;
+let lastOpenedCount = -1;
 
 async function pollForReplies(){
   if(!serverConnected) return;
   const data = await api('/api/dashboard');
   if(!data || !data.stats) return;
   const currentReplies = data.stats.replies || 0;
+  const currentOpened = data.stats.opened || 0;
 
   if(lastReplyCount === -1){
     // First load — just record the count, don't toast
     lastReplyCount = currentReplies;
+    lastOpenedCount = currentOpened;
     return;
+  }
+
+  if(currentOpened > lastOpenedCount){
+    const openCount = currentOpened - lastOpenedCount;
+    showToast(
+      openCount === 1 ? 'Email Opened!' : `${openCount} Emails Opened!`,
+      `${openCount} lead ${openCount===1?'has':'have'} opened your email.`,
+      'reply'
+    );
+    lastOpenedCount = currentOpened;
   }
 
   if(currentReplies > lastReplyCount){
@@ -4951,8 +4978,8 @@ async function pollForReplies(){
   loadData();
   // Re-render Lucide icons periodically
   setInterval(()=>{ if(window.lucide) lucide.createIcons(); }, 3000);
-  // Poll for new replies every 30 seconds
-  setInterval(pollForReplies, 30000);
+  // Poll for new replies/opens every 10 seconds
+  setInterval(pollForReplies, 10000);
 })();
 // Cycle bubble messages
 document.addEventListener('DOMContentLoaded', () => {

@@ -9,15 +9,14 @@ import email
 import logging
 import threading
 import time
+import os
 from datetime import datetime, timezone
 from email.header import decode_header
 
-from config import SMTP_USER, SMTP_PASSWORD
+import config
 
 logger = logging.getLogger("flowlockhunter.reply_tracker")
 
-IMAP_HOST = "imap.gmail.com"
-IMAP_PORT = 993
 CHECK_INTERVAL = 60  # check every 1 minute
 
 _tracker_running = False
@@ -46,6 +45,32 @@ def _extract_email_address(from_header):
     return from_header.strip().lower()
 
 
+def _imap_settings_for_smtp() -> tuple[str, int, str, str]:
+    """
+    Resolve IMAP host/port/user/password dynamically from current runtime settings.
+    This allows Admin Panel changes to work immediately (no server restart).
+    """
+    smtp_user = (os.getenv("SMTP_USER") or getattr(config, "SMTP_USER", "") or "").strip()
+    smtp_password = (os.getenv("SMTP_PASSWORD") or getattr(config, "SMTP_PASSWORD", "") or "").strip()
+    smtp_host = (os.getenv("SMTP_HOST") or getattr(config, "SMTP_HOST", "") or "").strip().lower()
+
+    imap_host = (os.getenv("SMTP_IMAP_HOST") or "").strip()
+    if not imap_host:
+        if smtp_host.startswith("smtp."):
+            imap_host = "imap." + smtp_host.split("smtp.", 1)[1]
+        elif smtp_user.endswith("@gmail.com"):
+            imap_host = "imap.gmail.com"
+        else:
+            imap_host = "imap.gmail.com"
+
+    try:
+        imap_port = int((os.getenv("SMTP_IMAP_PORT") or "993").strip())
+    except Exception:
+        imap_port = 993
+
+    return imap_host, imap_port, smtp_user, smtp_password
+
+
 def check_replies():
     """
     Connect to Gmail IMAP, fetch recent unread emails,
@@ -55,7 +80,8 @@ def check_replies():
     from modules.database import db
     from modules.events import emit_log
 
-    if not SMTP_USER or not SMTP_PASSWORD or "your" in SMTP_PASSWORD.lower():
+    imap_host, imap_port, smtp_user, smtp_password = _imap_settings_for_smtp()
+    if not smtp_user or not smtp_password or "your" in smtp_password.lower():
         logger.info("[Replies] No SMTP credentials — skipping reply check")
         return 0
 
@@ -65,13 +91,13 @@ def check_replies():
 
     try:
         # Connect to Gmail IMAP
-        mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
-        mail.login(SMTP_USER, SMTP_PASSWORD)
+        mail = imaplib.IMAP4_SSL(imap_host, imap_port)
+        mail.login(smtp_user, smtp_password)
         mail.select("INBOX")
 
         # Get all lead emails from DB for matching — include email_sent_at for time filtering
         leads = db.select("leads",
-            columns="id,contact_email,company_name,replied,email_sent_at",
+            columns="id,contact_email,company_name,company_domain,website_url,replied,email_sent,email_sent_at,form_filled",
             filters={"email_sent": "eq.true", "replied": "eq.false"},
             limit=5000)
 
@@ -270,7 +296,6 @@ def check_form_replies():
     Uses FORM_REPLY_IMAP_USER and FORM_REPLY_IMAP_PASSWORD from .env
     (the email used in form submissions, e.g. sales@flowlockoverseas.com)
     """
-    import os
     from modules.database import db
     from modules.events import emit_log
 
@@ -287,7 +312,8 @@ def check_form_replies():
     try:
         # Connect to IMAP for the form submission email
         imap_host = os.getenv("FORM_REPLY_IMAP_HOST", "imap.gmail.com")
-        mail = imaplib.IMAP4_SSL(imap_host, IMAP_PORT)
+        form_imap_port = int(os.getenv("FORM_REPLY_IMAP_PORT", "993"))
+        mail = imaplib.IMAP4_SSL(imap_host, form_imap_port)
         mail.login(form_email, form_password)
         mail.select("INBOX")
 

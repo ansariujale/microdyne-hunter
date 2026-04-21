@@ -10,6 +10,7 @@ import os
 import sys
 import json
 import time
+import base64
 import threading
 import logging
 import webbrowser
@@ -267,7 +268,6 @@ def agent_loop_thread():
     Stops after one complete cycle (no auto-restart).
     """
     from modules.database import get_total_leads, get_leads_for_email, get_leads_for_form_fill, db
-    from modules.reply_tracker import start_reply_tracker, stop_reply_tracker
 
     agent_state["agent_loop_running"] = True
     agent_state["pipeline_running"] = True
@@ -276,10 +276,6 @@ def agent_loop_thread():
     agent_state["cycle"] = 1
     agent_state["completed_phases"] = []
     add_log("Agent started — running step-by-step pipeline", category="system")
-
-    # Start reply tracker in background (checks every 1 min)
-    start_reply_tracker()
-    add_log("Reply tracker started — checking inbox every 1 min", category="email")
 
     def _phase_pause(seconds=3):
         """Short pause between phases so UI can update."""
@@ -417,20 +413,17 @@ def agent_loop_thread():
 
 
 def _agent_cleanup():
-    """Clean up agent state after completion or stop.
-    Reply/open tracking continues via dashboard polling — no agent dependency."""
+    """Clean up agent state after completion or stop."""
     try:
         from modules.email_queue import stop_email_workers
-        from modules.reply_tracker import stop_reply_tracker
         stop_email_workers()
-        stop_reply_tracker()
     except:
         pass
     agent_state["agent_loop_running"] = False
     agent_state["pipeline_running"] = False
     agent_state["status"] = "idle"
     agent_state["current_step"] = None
-    add_log("Agent stopped — open/reply tracking continues via dashboard", category="system")
+    add_log("Agent stopped — workers halted", category="system")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1008,9 +1001,9 @@ def get_dashboard_data():
             except:
                 pass
 
-        # Auto-check replies every 60 seconds (triggered by dashboard polling)
+        # Auto-check replies every 15 seconds (triggered by dashboard polling)
         now_ts = time.time()
-        if now_ts - _last_reply_check >= 60:
+        if now_ts - _last_reply_check >= 15:
             _last_reply_check = now_ts
             try:
                 # Check if there are any emailed but unreplied leads
@@ -1150,6 +1143,31 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
         elif path == "/api/sources":
             from modules.database import db
             sources = db.select("source_tracker", order="last_scraped.desc", limit=200) if db else []
+            if db and not sources:
+                # Fallback: build source summary from leads if source_tracker has no rows
+                leads = db.select("leads", columns="source,keyword_used,country,created_at", limit=10000) or []
+                grouped = {}
+                for row in leads:
+                    source = row.get("source") or "unknown"
+                    keyword = row.get("keyword_used") or "-"
+                    country = row.get("country") or "-"
+                    key = (source, keyword, country)
+                    if key not in grouped:
+                        grouped[key] = {
+                            "source": source,
+                            "keyword": keyword,
+                            "country": country,
+                            "total_found": 0,
+                            "last_batch_new": 0,
+                            "status": "active",
+                            "last_scraped": row.get("created_at"),
+                        }
+                    grouped[key]["total_found"] += 1
+                    grouped[key]["last_batch_new"] += 1
+                    created_at = row.get("created_at")
+                    if created_at and (not grouped[key]["last_scraped"] or created_at > grouped[key]["last_scraped"]):
+                        grouped[key]["last_scraped"] = created_at
+                sources = sorted(grouped.values(), key=lambda x: x.get("last_scraped") or "", reverse=True)[:200]
             self._json_response({"sources": sources})
 
         elif path == "/api/segments":
@@ -1583,11 +1601,12 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
 
                 def _set_env(var, val):
                     nonlocal env_content
-                    os.environ[var] = val
+                    safe_val = str(val).replace("\r", "").replace("\n", "\\n")
+                    os.environ[var] = safe_val
                     if f"{var}=" in env_content:
-                        env_content = re.sub(f"{var}=.*", f"{var}={val}", env_content)
+                        env_content = re.sub(f"{var}=.*", f"{var}={safe_val}", env_content)
                     else:
-                        env_content += f"\n{var}={val}"
+                        env_content += f"\n{var}={safe_val}"
 
                 if section == "apiKeys":
                     if body.get("apifyKey"): _set_env("APIFY_API_KEY", body["apifyKey"]); config.APIFY_API_KEY = body["apifyKey"]
@@ -1605,12 +1624,13 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     if body.get("smtpUser"): _set_env("SMTP_USER", body["smtpUser"]); config.SMTP_USER = body["smtpUser"]
                     if body.get("smtpPassword"): _set_env("SMTP_PASSWORD", body["smtpPassword"]); config.SMTP_PASSWORD = body["smtpPassword"]
                     if body.get("notificationEmail"): _set_env("NOTIFICATION_EMAIL", body["notificationEmail"]); config.NOTIFICATION_EMAIL = body["notificationEmail"]
-                    if body.get("emailSubject"):
+                    if "emailSubject" in body:
                         config.EMAIL_SUBJECT = body["emailSubject"]
                         _set_env("EMAIL_SUBJECT", body["emailSubject"])
-                    if body.get("emailBody"):
+                    if "emailBody" in body:
                         config.EMAIL_BODY = body["emailBody"]
-                        _set_env("EMAIL_BODY", body["emailBody"])
+                        encoded = base64.b64encode((body["emailBody"] or "").encode("utf-8")).decode("ascii")
+                        _set_env("EMAIL_BODY_B64", encoded)
 
                 elif section == "supabase":
                     if body.get("supabaseUrl"): _set_env("SUPABASE_URL", body["supabaseUrl"]); config.SUPABASE_URL = body["supabaseUrl"]
@@ -1648,18 +1668,26 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     if body.get("formName"):
                         config.FORM_FILL_DATA["name"] = body["formName"]
                         config.FORM_FILL_DATA["company"] = body["formName"]
+                        _set_env("FORM_NAME", body["formName"])
+                        _set_env("FORM_COMPANY", body["formName"])
                         # Split name for first/last
                         parts = body["formName"].split(" ", 1)
                         config.FORM_FILL_DATA["first_name"] = parts[0]
                         config.FORM_FILL_DATA["last_name"] = parts[1] if len(parts) > 1 else parts[0]
+                        _set_env("FORM_FIRST_NAME", config.FORM_FILL_DATA["first_name"])
+                        _set_env("FORM_LAST_NAME", config.FORM_FILL_DATA["last_name"])
                     if body.get("formEmail"):
                         config.FORM_FILL_DATA["email"] = body["formEmail"]
+                        _set_env("FORM_EMAIL", body["formEmail"])
                     if body.get("formPhone"):
                         config.FORM_FILL_DATA["phone"] = body["formPhone"]
+                        _set_env("FORM_PHONE", body["formPhone"])
                     if body.get("formSubject"):
                         config.FORM_FILL_DATA["subject"] = body["formSubject"]
+                        _set_env("FORM_SUBJECT", body["formSubject"])
                     if body.get("formMessage"):
                         config.FORM_FILL_DATA["message"] = body["formMessage"]
+                        _set_env("FORM_MESSAGE", body["formMessage"])
                     add_log(f"Form content updated: {config.FORM_FILL_DATA.get('name','')} | {config.FORM_FILL_DATA.get('email','')}", category="system")
 
                 elif section == "formReply":
@@ -1672,6 +1700,16 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 elif section == "adminCreds":
                     if body.get("adminUser"): ADMIN_CREDENTIALS["username"] = body["adminUser"]
                     if body.get("adminPass"): ADMIN_CREDENTIALS["password"] = body["adminPass"]
+
+                env_lines = []
+                for line in env_content.splitlines():
+                    s = line.strip()
+                    if not s or s.startswith("#"):
+                        env_lines.append(line)
+                        continue
+                    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", line):
+                        env_lines.append(line)
+                env_content = "\n".join(env_lines).strip() + "\n"
 
                 # Write .env file
                 with open(env_path, "w") as f:
@@ -1717,9 +1755,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
         elif path == "/api/stop-agent":
             # Stop ALL workers immediately
             from modules.email_queue import stop_email_workers
-            from modules.reply_tracker import stop_reply_tracker
             stop_email_workers()
-            stop_reply_tracker()
             agent_state["agent_loop_running"] = False
             agent_state["pipeline_running"] = False
             agent_state["status"] = "idle"
@@ -2039,8 +2075,13 @@ def main():
     print("  Press Ctrl+C to stop the server.")
     print()
 
-    # Reply/open tracking is handled by dashboard polling (every 60s auto-check)
-    # No background thread needed — works even when agent is stopped
+    # Start reply tracker in background so email replies are detected automatically
+    try:
+        from modules.reply_tracker import start_reply_tracker, stop_reply_tracker
+        start_reply_tracker()
+        logger.info("[Server] Reply tracker started at server boot")
+    except Exception as e:
+        logger.error(f"[Server] Failed to start reply tracker: {e}")
 
     # Open browser automatically (skip if NOBROWSER env is set)
     if not os.getenv("NOBROWSER"):
@@ -2055,6 +2096,12 @@ def main():
     except KeyboardInterrupt:
         print("\n  Server stopped.")
         server.shutdown()
+    finally:
+        try:
+            from modules.reply_tracker import stop_reply_tracker
+            stop_reply_tracker()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

@@ -23,8 +23,12 @@ from config import (
 
 def _using_smtp() -> bool:
     """Check if we're using SMTP instead of Instantly."""
-    no_instantly = not INSTANTLY_API_KEY or "your" in INSTANTLY_API_KEY.lower()
-    has_smtp = SMTP_USER and SMTP_PASSWORD and "your" not in SMTP_PASSWORD.lower()
+    import config
+    instantly_key = getattr(config, "INSTANTLY_API_KEY", INSTANTLY_API_KEY) or ""
+    smtp_user = getattr(config, "SMTP_USER", SMTP_USER) or ""
+    smtp_password = getattr(config, "SMTP_PASSWORD", SMTP_PASSWORD) or ""
+    no_instantly = not instantly_key or "your" in instantly_key.lower()
+    has_smtp = smtp_user and smtp_password and "your" not in smtp_password.lower()
     return no_instantly and has_smtp
 from modules.events import emit_log
 
@@ -281,12 +285,12 @@ def _build_html_email(body: str, lead: dict, subject: str, sequence_stage: int, 
     """Build HTML email using email-template.html with exact admin panel content.
     Supports <b>bold</b> tags in the body content."""
     import os, re
-    from config import ROZPER, EMAIL_BODY
+    from config import ROZPER, EMAIL_BODY, SENDER_EMAIL, SMTP_USER
 
     company_name = ROZPER.get("company_name", "FlowLock Overseas")
     contact_name = ROZPER.get("contact_name", "H. Khorajiya")
     phone = ROZPER.get("phone", "+91-9082717763")
-    email_addr = ROZPER.get("contact_email", "sales@flowlockoverseas.com")
+    email_addr = (SENDER_EMAIL or SMTP_USER or ROZPER.get("contact_email") or "sales@flowlockoverseas.com")
     website = ROZPER.get("website", "https://www.flowlockoverseas.com")
 
     # Use the EXACT admin panel body content (not AI-generated)
@@ -359,13 +363,22 @@ def _send_or_record(to_email: str, subject: str, body: str,
     # Build professional HTML email from plain text body
     html_body = _build_html_email(body, lead, subject, sequence_stage, pixel_html)
 
+    import config
+    instantly_key = getattr(config, "INSTANTLY_API_KEY", INSTANTLY_API_KEY) or ""
+    sender_email = (getattr(config, "SENDER_EMAIL", SENDER_EMAIL) or "").strip()
+    smtp_host = (getattr(config, "SMTP_HOST", SMTP_HOST) or "").strip()
+    smtp_port = int(getattr(config, "SMTP_PORT", SMTP_PORT) or 587)
+    smtp_user = (getattr(config, "SMTP_USER", SMTP_USER) or "").strip()
+    smtp_password = (getattr(config, "SMTP_PASSWORD", SMTP_PASSWORD) or "").strip()
+    smtp_from_name = (getattr(config, "SMTP_FROM_NAME", SMTP_FROM_NAME) or "FlowLock Overseas").strip()
+
     # ── Option 1: Instantly.dev API ───────────────────
-    if INSTANTLY_API_KEY and "your" not in INSTANTLY_API_KEY.lower():
+    if instantly_key and "your" not in instantly_key.lower():
         try:
             import httpx
-            from_email = SENDER_EMAIL
+            from_email = sender_email or smtp_user
             payload = {
-                "api_key": INSTANTLY_API_KEY,
+                "api_key": instantly_key,
                 "email_account": from_email,
                 "to": to_email,
                 "subject": subject,
@@ -386,16 +399,24 @@ def _send_or_record(to_email: str, subject: str, body: str,
             return "failed"
 
     # ── Option 2: SMTP (Gmail) ────────────────────────
-    if SMTP_USER and SMTP_PASSWORD and "your" not in SMTP_PASSWORD.lower():
+    if smtp_user and smtp_password and "your" not in smtp_password.lower():
         try:
             import smtplib
             from email.mime.multipart import MIMEMultipart
             from email.mime.text import MIMEText
+            from email.utils import formatdate, make_msgid
 
             msg = MIMEMultipart("alternative")
-            msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_USER}>"
+            from_header = sender_email or smtp_user
+            # Route replies to the authenticated mailbox so reply tracking works.
+            reply_to = smtp_user or from_header
+            msg["From"] = f"{smtp_from_name} <{from_header}>"
+            msg["Reply-To"] = reply_to
             msg["To"] = to_email
             msg["Subject"] = subject
+            msg["Date"] = formatdate(localtime=True)
+            msg["Message-ID"] = make_msgid(domain=(from_header.split("@")[-1] if "@" in from_header else None))
+            msg["X-Auto-Response-Suppress"] = "OOF, AutoReply"
 
             # Plain text version
             msg.attach(MIMEText(body, "plain", "utf-8"))
@@ -403,17 +424,17 @@ def _send_or_record(to_email: str, subject: str, body: str,
             msg.attach(MIMEText(html_body, "html", "utf-8"))
 
             # Support both SSL (port 465) and TLS (port 587)
-            if SMTP_PORT == 465:
-                with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as server:
-                    server.login(SMTP_USER, SMTP_PASSWORD)
+            if smtp_port == 465:
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30) as server:
+                    server.login(smtp_user, smtp_password)
                     server.send_message(msg)
             else:
-                with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
                     server.starttls()
-                    server.login(SMTP_USER, SMTP_PASSWORD)
+                    server.login(smtp_user, smtp_password)
                     server.send_message(msg)
 
-            logger.info(f"[Email] SMTP sent → {to_email} via {SMTP_USER}")
+            logger.info(f"[Email] SMTP sent → {to_email} via {smtp_user}")
             return "sent"
 
         except Exception as e:
@@ -510,6 +531,7 @@ def followup_worker_thread():
         try:
             from modules.database import get_followup_due
             worker_status["followup"]["status"] = "polling"
+
             leads = get_followup_due()
 
             if not leads:
