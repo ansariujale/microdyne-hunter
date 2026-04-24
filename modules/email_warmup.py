@@ -7,7 +7,7 @@ Persists warmup state in Supabase email_warmup table.
 import logging
 from datetime import datetime, timezone, date
 
-from config import WARMUP_SCHEDULE, EMAILS_PER_DOMAIN, SENDING_DOMAINS
+from config import EMAILS_PER_DOMAIN, SENDING_EMAILS
 
 logger = logging.getLogger("flowlockhunter.warmup")
 
@@ -43,17 +43,7 @@ def get_warmup_day(domain: str) -> int:
 
 
 def get_daily_limit(domain: str) -> int:
-    """Get today's max emails for a domain based on warmup progress."""
-    day = get_warmup_day(domain)
-    # Find the limit for this day from the schedule
-    limit = EMAILS_PER_DOMAIN  # default to steady state
-    for schedule_day in sorted(WARMUP_SCHEDULE.keys(), reverse=True):
-        if day >= schedule_day:
-            limit = WARMUP_SCHEDULE[schedule_day]
-            break
-    else:
-        limit = WARMUP_SCHEDULE.get(1, 5)
-    return limit
+    return EMAILS_PER_DOMAIN
 
 
 def get_emails_sent_today(domain: str) -> int:
@@ -126,7 +116,7 @@ def get_best_domain() -> str | None:
     best_domain = None
     best_remaining = 0
 
-    for domain in SENDING_DOMAINS:
+    for domain in SENDING_EMAILS:
         limit = get_daily_limit(domain)
         sent = get_emails_sent_today(domain)
         # Hard block: skip any domain at or over limit
@@ -148,13 +138,13 @@ def get_best_domain() -> str | None:
 
 def get_total_remaining_capacity() -> int:
     """Get total remaining capacity across all domains."""
-    return sum(get_remaining_capacity(d) for d in SENDING_DOMAINS)
+    return sum(get_remaining_capacity(d) for d in SENDING_EMAILS)
 
 
 def get_warmup_status() -> list[dict]:
     """Get warmup status for all domains (for dashboard)."""
     status = []
-    for domain in SENDING_DOMAINS:
+    for domain in SENDING_EMAILS:
         day = get_warmup_day(domain)
         limit = get_daily_limit(domain)
         sent = get_emails_sent_today(domain)

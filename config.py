@@ -65,7 +65,7 @@ ROZPER = FLOWLOCK
 # SCRAPING SETTINGS
 # ═══════════════════════════════════════════════════════════════
 
-DAILY_LEAD_TARGET = 1000
+DAILY_LEAD_TARGET = int(os.getenv("DAILY_LEAD_TARGET", "1000"))
 
 # Target buyer types (industrial sectors)
 LEAD_TYPES = [
@@ -79,27 +79,43 @@ LEAD_TYPES = [
     "general_engineering",
 ]
 
+import json
+
 # Target countries (priority order — high-converting industrial markets first)
-TARGET_COUNTRIES = [
-    "India", "UAE", "Saudi Arabia", "US", "UK", "Germany", "Netherlands",
-    "South Africa", "Nigeria", "Kenya", "Singapore", "Malaysia",
-    "Turkey", "Egypt", "Brazil", "Mexico", "Italy", "France",
-    "Australia", "Indonesia", "Thailand", "Vietnam", "Qatar", "Oman",
-]
+_tc_env = os.getenv("TARGET_COUNTRIES", "")
+if _tc_env:
+    try:
+        TARGET_COUNTRIES = json.loads(_tc_env)
+    except:
+        TARGET_COUNTRIES = [c.strip() for c in _tc_env.split(",") if c.strip()]
+else:
+    TARGET_COUNTRIES = [
+        "India", "UAE", "Saudi Arabia", "US", "UK", "Germany", "Netherlands",
+        "South Africa", "Nigeria", "Kenya", "Singapore", "Malaysia",
+        "Turkey", "Egypt", "Brazil", "Mexico", "Italy", "France",
+        "Australia", "Indonesia", "Thailand", "Vietnam", "Qatar", "Oman",
+    ]
 
 # Search keywords templates (combined with country)
-SEARCH_KEYWORDS = [
-    "mechanical seal supplier {country}",
-    "hydraulic fittings wholesaler {country}",
-    "industrial seal manufacturer {country}",
-    "pump seal supplier {country}",
-    "mechanical seal distributor {country}",
-    "hydraulic tube fittings {country}",
-    "seal refurbishment service {country}",
-    "cartridge seal supplier {country}",
-    "bellow seal manufacturer {country}",
-    "hydraulic couplings supplier {country}",
-]
+_sk_env = os.getenv("SEARCH_KEYWORDS", "")
+if _sk_env:
+    try:
+        SEARCH_KEYWORDS = json.loads(_sk_env)
+    except:
+        SEARCH_KEYWORDS = [k.strip() for k in _sk_env.split(",") if k.strip()]
+else:
+    SEARCH_KEYWORDS = [
+        "mechanical seal supplier {country}",
+        "hydraulic fittings wholesaler {country}",
+        "industrial seal manufacturer {country}",
+        "pump seal supplier {country}",
+        "mechanical seal distributor {country}",
+        "hydraulic tube fittings {country}",
+        "seal refurbishment service {country}",
+        "cartridge seal supplier {country}",
+        "bellow seal manufacturer {country}",
+        "hydraulic couplings supplier {country}",
+    ]
 
 # Apollo.io job titles to search
 APOLLO_JOB_TITLES = [
@@ -149,13 +165,21 @@ elif _email_body_env:
     EMAIL_BODY = _email_body_env.replace("\\n", "\n")
 
 # Sending email accounts (emails are sent FROM these — 65 emails/day each)
-SENDING_EMAILS = [
-    "flowlockoverseas@gmail.com",
-    "sales@flowlockoverseas.com",
-]
+_sending_emails_b64 = os.getenv("SENDING_EMAILS_B64", "")
+if _sending_emails_b64:
+    try:
+        _decoded = base64.b64decode(_sending_emails_b64.encode("ascii")).decode("utf-8")
+        SENDING_EMAILS = [l.strip() for l in _decoded.splitlines() if l.strip()]
+    except Exception:
+        SENDING_EMAILS = []
+else:
+    SENDING_EMAILS = [
+        "flowlockoverseas@gmail.com",
+        "sales@flowlockoverseas.com",
+    ]
 
-# Sending domains (auto-extracted from emails)
-SENDING_DOMAINS = list(set(e.split("@")[-1] for e in SENDING_EMAILS))
+# Backward-compat: domains list (derived)
+SENDING_DOMAINS = list(set(e.split("@")[-1] for e in SENDING_EMAILS if "@" in e))
 
 # Follow-up sequence timing (days after initial email)
 FOLLOWUP_SCHEDULE = {
@@ -214,7 +238,7 @@ FORM_MESSAGE_TEMPLATE = (
 # ═══════════════════════════════════════════════════════════════
 
 SCORE_THRESHOLDS = {
-    "min_qualify": 40,        # minimum score to qualify a lead
+    "min_qualify": int(os.getenv("MIN_QUALIFY_SCORE", "40")),  # minimum score to qualify a lead
     "high_priority": 70,      # high-priority leads
     "skip_below": 20,         # auto-skip leads below this score
 }

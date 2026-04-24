@@ -86,6 +86,19 @@ class SupabaseREST:
             logger.error(f"UPDATE {table} error: {e}")
             return None
 
+    def delete(self, table: str, filters: dict) -> bool:
+        """DELETE rows matching filters."""
+        url = f"{self.base_url}/{table}"
+        for key, val in filters.items():
+            url += f"{'?' if '?' not in url else '&'}{key}={val}"
+        try:
+            resp = self.client.delete(url)
+            resp.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"DELETE {table} error: {e}")
+            return False
+
     def count(self, table: str, filters: dict = None) -> int:
         """COUNT rows in a table."""
         url = f"{self.base_url}/{table}?select=id"
@@ -814,9 +827,25 @@ def get_today_stats() -> dict:
     """Get today's lead/outreach counts."""
     if not db:
         return {"leads_added": 0, "emails_sent": 0, "forms_filled": 0}
-    today = datetime.now(timezone.utc).date().isoformat()
+    now_local = datetime.now()
+    today = now_local.date().isoformat()
+
+    def _is_today(ts: str) -> bool:
+        if not ts:
+            return False
+        try:
+            d = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().date().isoformat()
+            return d == today
+        except Exception:
+            return False
+
+    leads = db.select("leads", columns="created_at,email_sent,email_sent_at,form_filled,form_filled_at", limit=10000) or []
+    leads_added = sum(1 for r in leads if _is_today(r.get("created_at", "")))
+    emails_sent = sum(1 for r in leads if r.get("email_sent") and _is_today(r.get("email_sent_at", "")))
+    forms_filled = sum(1 for r in leads if r.get("form_filled") and _is_today(r.get("form_filled_at", "")))
+
     return {
-        "leads_added": db.count("leads", {"created_at": f"gte.{today}"}),
-        "emails_sent": db.count("leads", {"email_sent": "eq.true", "email_sent_at": f"gte.{today}"}),
-        "forms_filled": db.count("leads", {"form_filled": "eq.true", "form_filled_at": f"gte.{today}"}),
+        "leads_added": leads_added,
+        "emails_sent": emails_sent,
+        "forms_filled": forms_filled,
     }

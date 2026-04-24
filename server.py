@@ -11,10 +11,11 @@ import sys
 import json
 import time
 import base64
+import random
 import threading
 import logging
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
@@ -285,6 +286,59 @@ def agent_loop_thread():
             time.sleep(1)
         return True
 
+    def _get_pending_email_count() -> int:
+        import config
+        if not db:
+            return 0
+        try:
+            min_score = getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 40)
+            return db.count("leads", {
+                "email_sent": "eq.false",
+                "excluded": "eq.false",
+                "score": f"gte.{min_score}",
+                "contact_email": "neq.",
+            })
+        except Exception:
+            return 0
+
+    def _get_email_remaining_today() -> int:
+        import config
+        if not db:
+            return 0
+        today_str = datetime.now(timezone.utc).date().isoformat()
+
+        instantly_key = (getattr(config, "INSTANTLY_API_KEY", "") or "").strip()
+        smtp_user = (getattr(config, "SMTP_USER", "") or "").strip()
+        smtp_password = (getattr(config, "SMTP_PASSWORD", "") or "").strip()
+        using_instantly = bool(instantly_key and "your" not in instantly_key.lower())
+        using_smtp = bool((not using_instantly) and smtp_user and smtp_password and "your" not in smtp_password.lower())
+
+        total_remaining = 0
+        sending_emails = getattr(config, "SENDING_EMAILS", []) or []
+        emails_per = int(getattr(config, "EMAILS_PER_DOMAIN", 65) or 65)
+
+        if using_smtp:
+            smtp_domain = smtp_user.split("@")[-1].lower() if "@" in smtp_user else smtp_user.lower()
+            sent_today = db.count("leads", {
+                "email_sent": "eq.true",
+                "sending_domain": f"eq.{smtp_domain}",
+                "email_sent_at": f"gte.{today_str}",
+            })
+            return max(0, emails_per - int(sent_today or 0))
+
+        for addr in sending_emails:
+            if "@" not in addr:
+                continue
+            domain = addr.split("@")[-1].lower()
+            sent_today = db.count("leads", {
+                "email_sent": "eq.true",
+                "sending_domain": f"eq.{domain}",
+                "email_sent_at": f"gte.{today_str}",
+            })
+            total_remaining += max(0, emails_per - int(sent_today or 0))
+
+        return total_remaining
+
     # ══════════════════════════════════════════════════════
     # PHASE 1: STORE — Check existing leads
     # ══════════════════════════════════════════════════════
@@ -292,19 +346,40 @@ def agent_loop_thread():
     add_log("▶ Phase 1: Checking existing leads...", category="system")
     time.sleep(2)
 
+    import config
+    target_leads = int(getattr(config, "DAILY_LEAD_TARGET", 1000) or 1000)
+
     total = get_total_leads()
     pending_email = get_leads_for_email(limit=1000)
 
-    if total > 0:
-        add_log(f"✓ Found {total} leads in database ({len(pending_email)} pending email)", category="lead")
+    if total >= target_leads:
+        add_log(f"✓ Found {total} leads in database (target {target_leads} reached)", category="lead")
         agent_state["stats"]["leads_stored"] = total
     else:
-        add_log("No leads found — scraping new leads first", category="lead")
-        agent_state["current_step"] = "scrape"
-        _run_step_sync("scrape")
-        total = get_total_leads()
+        add_log(f"Need more leads — {total}/{target_leads}. Starting scrape...", category="lead")
+
+        prev_total = total
+        scrape_round = 0
+        while agent_state["agent_loop_running"] and total < target_leads and scrape_round < 2:
+            scrape_round += 1
+            agent_state["current_step"] = "scrape"
+            add_log(f"▶ Scrape round {scrape_round}/2: need {target_leads - total} more leads", category="lead")
+            _run_step_sync("scrape")
+
+            total = get_total_leads()
+            inserted = total - prev_total
+            agent_state["stats"]["leads_stored"] = total
+            add_log(f"✓ Scrape round {scrape_round} complete — +{max(0, inserted)} new leads (total {total}/{target_leads})", category="lead")
+
+            if inserted <= 0:
+                add_log("⚠ No new leads added in this round — treating countries as completed/exhausted. Continuing pipeline.", "warning", category="lead")
+                break
+
+            prev_total = total
+
+        agent_state["current_step"] = "store"
         pending_email = get_leads_for_email(limit=1000)
-        add_log(f"✓ Scraped {total} new leads", category="lead")
+        add_log(f"✓ Lead collection finished — {total} leads ready ({len(pending_email)} pending email)", category="lead")
 
     agent_state["completed_phases"].append("store")
     add_log(f"✓ Phase 1 complete — {total} leads ready", category="system")
@@ -316,7 +391,16 @@ def agent_loop_thread():
     # PHASE 2: EMAIL — Send emails one by one
     # ══════════════════════════════════════════════════════
     agent_state["current_step"] = "email"
-    add_log(f"▶ Phase 2: Sending emails to {len(pending_email)} leads...", category="email")
+    import config
+    pending_email_total = _get_pending_email_count()
+    email_remaining_today = _get_email_remaining_today()
+    agent_state["stats"]["pending_email"] = pending_email_total
+    agent_state["stats"]["email_remaining_today"] = email_remaining_today
+
+    add_log(
+        f"▶ Phase 2: Email sending — {pending_email_total} leads pending, {email_remaining_today} sends remaining today",
+        category="email",
+    )
     time.sleep(1)
 
     email_sent_count = 0
@@ -325,25 +409,48 @@ def agent_loop_thread():
     for i, lead in enumerate(pending_email):
         if not agent_state["agent_loop_running"]:
             break
+
+        email_remaining_today = _get_email_remaining_today()
+        if email_remaining_today <= 0:
+            add_log("⏸ Daily email limit reached — holding email phase and continuing to forms", category="email")
+            break
+
         company = lead.get("company_name", "?")
         email = lead.get("contact_email", "?")
         add_log(f"  Sending email {i+1}/{len(pending_email)}: {company} ({email})", category="email")
 
         try:
-            success = process_lead_email(lead, sequence_stage=1)
+            result = process_lead_email(lead, sequence_stage=1, return_reason=True)
+            success, reason = result if isinstance(result, tuple) else (bool(result), "")
             if success:
                 email_sent_count += 1
                 add_log(f"  ✓ Email sent to {email}", category="email")
             else:
-                add_log(f"  ⚠ Skipped {email}", "warning", category="email")
+                suffix = f" — {reason}" if reason else ""
+                add_log(f"  ⚠ Skipped {email}{suffix}", "warning", category="email")
         except Exception as e:
             add_log(f"  ✗ Email failed for {email}: {e}", "error", category="email")
 
         agent_state["stats"]["emails_sent"] = email_sent_count
-        time.sleep(2)  # pause between emails
+
+        try:
+            delay_min, delay_max = getattr(config, "EMAIL_SEND_DELAY", (2, 8))
+            if success:
+                time.sleep(random.uniform(float(delay_min), float(delay_max)))
+            else:
+                time.sleep(0.5)
+        except Exception:
+            time.sleep(2)
 
     agent_state["completed_phases"].append("email")
-    add_log(f"✓ Phase 2 complete — {email_sent_count} emails sent", category="email")
+    pending_email_total = _get_pending_email_count()
+    email_remaining_today = _get_email_remaining_today()
+    agent_state["stats"]["pending_email"] = pending_email_total
+    agent_state["stats"]["email_remaining_today"] = email_remaining_today
+    add_log(
+        f"✓ Phase 2 complete — {email_sent_count} emails sent this run | {email_remaining_today} remaining today | {pending_email_total} leads still pending email",
+        category="email",
+    )
 
     if not _phase_pause(3):
         _agent_cleanup(); return
@@ -355,16 +462,47 @@ def agent_loop_thread():
     add_log("▶ Phase 3: Starting form submissions...", category="form")
     time.sleep(1)
 
-    form_success = 0
-    form_failed = 0
     try:
         from modules.form_outreach import run_form_outreach
-        result = run_form_outreach(batch_size=100)
-        form_success = result.get("success", 0)
-        form_failed = result.get("failed", 0)
-        form_noform = result.get("no_form", 0)
-        agent_state["stats"]["forms_filled"] = form_success
-        add_log(f"✓ Phase 3 complete — {form_success} forms submitted, {form_failed} failed, {form_noform} no form", category="form")
+        from modules.database import get_form_outreach_counts
+
+        total_runs = 0
+        while agent_state["agent_loop_running"]:
+            counts = get_form_outreach_counts()
+            pending_forms = int(counts.get("pending", 0) or 0)
+            processing_forms = int(counts.get("processing", 0) or 0)
+
+            if pending_forms <= 0 and processing_forms <= 0:
+                break
+
+            batch_size = min(100, max(0, pending_forms))
+            if batch_size == 0:
+                break
+
+            total_runs += 1
+            add_log(f"  Form batch {total_runs}: {pending_forms} pending — processing {batch_size}", category="form")
+            run_form_outreach(batch_size=batch_size)
+
+            counts = get_form_outreach_counts()
+            agent_state["stats"]["forms_filled"] = int(counts.get("success", 0) or 0)
+            agent_state["stats"]["forms_failed"] = int(counts.get("failed", 0) or 0) + int(counts.get("no_form", 0) or 0)
+            agent_state["stats"]["forms_pending"] = int(counts.get("pending", 0) or 0)
+
+            add_log(
+                f"  ✓ Forms progress — success: {counts.get('success',0)}, failed: {counts.get('failed',0)}, no form: {counts.get('no_form',0)}, pending: {counts.get('pending',0)}",
+                category="form",
+            )
+
+            time.sleep(1)
+
+        counts = get_form_outreach_counts()
+        agent_state["stats"]["forms_filled"] = int(counts.get("success", 0) or 0)
+        agent_state["stats"]["forms_failed"] = int(counts.get("failed", 0) or 0) + int(counts.get("no_form", 0) or 0)
+        agent_state["stats"]["forms_pending"] = int(counts.get("pending", 0) or 0)
+        add_log(
+            f"✓ Phase 3 complete — {counts.get('success',0)} forms submitted, {counts.get('failed',0)} failed, {counts.get('no_form',0)} no form",
+            category="form",
+        )
     except Exception as e:
         add_log(f"⚠ Form phase error: {e}", "error", category="form")
 
@@ -986,11 +1124,63 @@ def _fallback_chat(msg: str) -> str:
 
 _last_reply_check = 0  # timestamp of last reply check
 
+
+def _parse_ymd(value: str):
+    try:
+        return datetime.strptime((value or "").strip(), "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _in_date_range(ts_value: str, date_from: str = "", date_to: str = "") -> bool:
+    if not ts_value:
+        return False
+    try:
+        d = datetime.fromisoformat(ts_value.replace("Z", "+00:00")).astimezone().date()
+    except Exception:
+        try:
+            d = datetime.fromisoformat(ts_value[:19]).date()
+        except Exception:
+            return False
+
+    f = _parse_ymd(date_from) if date_from else None
+    t = _parse_ymd(date_to) if date_to else None
+    if f and d < f:
+        return False
+    if t and d > t:
+        return False
+    return True
+
+def _is_hidden(l: dict) -> bool:
+    """Check if lead should be hidden from UI (processed > 24h ago)."""
+    now = datetime.now(timezone.utc)
+    # Check email
+    if l.get("email_sent"):
+        email_at = l.get("email_sent_at")
+        if email_at:
+            try:
+                dt = datetime.fromisoformat(email_at.replace("Z", "+00:00"))
+                if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+                if now - dt > timedelta(hours=24): return True
+            except Exception: pass
+    # Check form
+    status = l.get("form_submission_status", "pending")
+    if status != "pending":
+        form_at = l.get("form_last_attempted_at")
+        if form_at:
+            try:
+                dt = datetime.fromisoformat(form_at.replace("Z", "+00:00"))
+                if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+                if now - dt > timedelta(hours=24): return True
+            except Exception: pass
+    return False
+
 def get_dashboard_data():
     """Get all data the dashboard needs."""
     global _last_reply_check
     from modules.database import db, get_total_leads, get_today_stats, get_hot_leads
     try:
+        import config
         # Auto-sync email_opened from tracking table
         if db:
             try:
@@ -1029,8 +1219,9 @@ def get_dashboard_data():
         today = get_today_stats()
         hot = get_hot_leads()
 
-        # Get all leads for the table (limited)
-        leads = db.select("leads", order="created_at.desc", limit=500) if db else []
+        # Get all leads for the table (limited and filtered to hide processed > 24h)
+        all_leads_raw = db.select("leads", order="created_at.desc", limit=1000) if db else []
+        leads = [l for l in all_leads_raw if not _is_hidden(l)][:500]
 
         # Email stats
         emailed = db.count("leads", {"email_sent": "eq.true"}) if db else 0
@@ -1038,6 +1229,48 @@ def get_dashboard_data():
         replies = db.count("leads", {"replied": "eq.true"}) if db else 0
         interested = db.count("leads", {"interested": "eq.true"}) if db else 0
         closed = db.count("leads", {"closed": "eq.true"}) if db else 0
+
+        pending_email = 0
+        email_remaining_today = 0
+        if db:
+            min_score = getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 40)
+            pending_email = db.count("leads", {
+                "email_sent": "eq.false",
+                "excluded": "eq.false",
+                "score": f"gte.{min_score}",
+                "contact_email": "neq.",
+            })
+
+            today_str = datetime.now(timezone.utc).date().isoformat()
+            emails_per = int(getattr(config, "EMAILS_PER_DOMAIN", 65) or 65)
+            instantly_key = (getattr(config, "INSTANTLY_API_KEY", "") or "").strip()
+            smtp_user = (getattr(config, "SMTP_USER", "") or "").strip()
+            smtp_password = (getattr(config, "SMTP_PASSWORD", "") or "").strip()
+            using_instantly = bool(instantly_key and "your" not in instantly_key.lower())
+            using_smtp = bool((not using_instantly) and smtp_user and smtp_password and "your" not in smtp_password.lower())
+
+            if using_smtp:
+                smtp_domain = smtp_user.split("@")[-1].lower() if "@" in smtp_user else smtp_user.lower()
+                sent_today = db.count("leads", {
+                    "email_sent": "eq.true",
+                    "sending_domain": f"eq.{smtp_domain}",
+                    "email_sent_at": f"gte.{today_str}",
+                })
+                email_remaining_today = max(0, emails_per - int(sent_today or 0))
+            else:
+                total_remaining = 0
+                sending_emails = getattr(config, "SENDING_EMAILS", []) or []
+                for addr in sending_emails:
+                    if "@" not in addr:
+                        continue
+                    domain = addr.split("@")[-1].lower()
+                    sent_today = db.count("leads", {
+                        "email_sent": "eq.true",
+                        "sending_domain": f"eq.{domain}",
+                        "email_sent_at": f"gte.{today_str}",
+                    })
+                    total_remaining += max(0, emails_per - int(sent_today or 0))
+                email_remaining_today = total_remaining
 
         # Revenue
         closed_leads = db.select("leads", columns="revenue_monthly", filters={"closed": "eq.true"}) if db else []
@@ -1062,6 +1295,8 @@ def get_dashboard_data():
                 "interested": interested,
                 "closed": closed,
                 "mrr": mrr,
+                "pending_email": pending_email,
+                "email_remaining_today": email_remaining_today,
             },
             "sources": sources,
             "segments": segments,
@@ -1121,8 +1356,12 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     filters["source"] = f"eq.{params['source'][0]}"
                 limit = int(params.get("limit", [100])[0])
                 offset = int(params.get("offset", [0])[0])
-                leads = db.select("leads", filters=filters, order="created_at.desc", limit=limit)
+                # Fetch more than limit to account for hidden ones
+                leads_raw = db.select("leads", filters=filters, order="created_at.desc", limit=max(limit * 3, 1000))
+                leads_filtered = [l for l in leads_raw if not _is_hidden(l)]
+                leads = leads_filtered[offset:offset+limit]
                 total = db.count("leads", filters)
+                # Adjust total approximately or leave as is (total in DB)
                 self._json_response({"leads": leads, "total": total})
             else:
                 self._json_response({"leads": [], "total": 0})
@@ -1180,16 +1419,27 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/email-stats":
             from modules.database import db
+            params = parse_qs(parsed.query)
+            date_from = params.get("date_from", [""])[0]
+            date_to = params.get("date_to", [""])[0]
             if db:
-                total_sent = db.count("outreach_log", {"channel": "eq.email"})
-                recorded = db.count("outreach_log", {"channel": "eq.email", "delivery_status": "eq.recorded"})
-                sent = db.count("outreach_log", {"channel": "eq.email", "delivery_status": "eq.sent"})
-                failed = db.count("outreach_log", {"channel": "eq.email", "delivery_status": "eq.failed"})
+                logs = db.select("outreach_log",
+                    filters={"channel": "eq.email"},
+                    columns="delivery_status,sent_at",
+                    limit=10000)
+                if date_from or date_to:
+                    logs = [l for l in (logs or []) if _in_date_range(l.get("sent_at", ""), date_from, date_to)]
+                total_sent = len(logs or [])
+                recorded = sum(1 for l in (logs or []) if l.get("delivery_status") == "recorded")
+                sent = sum(1 for l in (logs or []) if l.get("delivery_status") == "sent")
+                failed = sum(1 for l in (logs or []) if l.get("delivery_status") == "failed")
                 self._json_response({
                     "total_outreach": total_sent,
                     "recorded": recorded,
                     "sent": sent,
                     "failed": failed,
+                    "date_from": date_from or None,
+                    "date_to": date_to or None,
                 })
             else:
                 self._json_response({"total_outreach": 0})
@@ -1198,24 +1448,38 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             # Email account health — shows stats per sending email account
             import config
             from modules.database import db
+            from modules.email_warmup import get_warmup_status
             domains_result = []
             total_remaining = 0
 
-            # Get configured sending email accounts
-            sending_emails = getattr(config, 'SENDING_EMAILS', [])
-            if not sending_emails:
-                # Fallback: build from SENDING_DOMAINS
-                sending_emails = config.SENDING_DOMAINS or []
+            instantly_key = (getattr(config, "INSTANTLY_API_KEY", "") or "").strip()
+            smtp_user = (getattr(config, "SMTP_USER", "") or "").strip()
+            smtp_password = (getattr(config, "SMTP_PASSWORD", "") or "").strip()
+            using_instantly = bool(instantly_key and "your" not in instantly_key.lower())
+            using_smtp = bool((not using_instantly) and smtp_user and smtp_password and "your" not in smtp_password.lower())
 
-            # Only show configured sending emails — do NOT auto-add SMTP sender
+            if using_smtp:
+                sending_emails = [smtp_user]
+            else:
+                sending_emails = getattr(config, "SENDING_EMAILS", []) or []
+                if not sending_emails:
+                    sending_emails = config.SENDING_DOMAINS or []
+
+            warmup = get_warmup_status()
+            warmup_by_domain = {w.get("domain"): w for w in (warmup or [])}
 
             for email_account in sending_emails:
                 domain = email_account.split("@")[-1] if "@" in email_account else email_account
+                w = warmup_by_domain.get(domain, {})
+                daily_limit = int(w.get("daily_limit", config.EMAILS_PER_DOMAIN) or config.EMAILS_PER_DOMAIN)
+                sent_today = int(w.get("emails_sent", 0) or 0)
+                remaining_today = int(w.get("remaining", max(0, daily_limit - sent_today)) or 0)
+                warmup_day = int(w.get("warmup_day", 1) or 1)
                 d_stats = {
                     "domain": email_account,  # Show full email in UI
                     "actual_domain": domain,
-                    "emails_sent": 0, "daily_limit": config.EMAILS_PER_DOMAIN,
-                    "remaining": config.EMAILS_PER_DOMAIN, "warmup_day": 1,
+                    "emails_sent": sent_today, "daily_limit": daily_limit,
+                    "remaining": remaining_today, "warmup_day": warmup_day,
                     "total_sent": 0, "opened": 0, "replied": 0,
                     "open_rate": 0, "reply_rate": 0,
                     "status": "Active",
@@ -1228,12 +1492,6 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                             filters={"channel": "eq.email", "sending_domain": f"eq.{domain}"},
                             columns="id,lead_id,delivery_status,sent_at", limit=5000)
                         d_stats["total_sent"] = len(logs)
-
-                        # Today's sends
-                        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                        today_sends = [l for l in logs if l.get("sent_at", "").startswith(today_str)]
-                        d_stats["emails_sent"] = len(today_sends)
-                        d_stats["remaining"] = max(0, config.EMAILS_PER_DOMAIN - len(today_sends))
 
                         # Open/reply stats from leads
                         leads_data = db.select("leads",
@@ -1279,8 +1537,25 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     all_tracking = db.select("email_tracking",
                         order="created_at.desc",
                         limit=100)
+                    
+                    # Fetch corresponding leads to get website_url, replied, replied_at
+                    lead_ids = [t['lead_id'] for t in all_tracking if t.get('lead_id')]
+                    leads_data = {}
+                    if lead_ids:
+                        # Batch fetch leads
+                        id_list = ",".join([str(id) for id in set(lead_ids)])
+                        leads_res = db.select("leads", columns="id,website_url,replied,replied_at", filters={"id": f"in.({id_list})"}, limit=100)
+                        for l in leads_res:
+                            leads_data[l['id']] = l
+
                     # Also update leads.email_opened based on tracking data
                     for t in all_tracking:
+                        if t.get('lead_id') and t['lead_id'] in leads_data:
+                            l = leads_data[t['lead_id']]
+                            t['website_url'] = l.get('website_url')
+                            t['replied'] = l.get('replied')
+                            t['replied_at'] = l.get('replied_at')
+                        
                         if t.get("opened") and t.get("lead_id"):
                             try:
                                 db.update("leads", {"email_opened": True}, {"id": f"eq.{t['lead_id']}"})
@@ -1296,11 +1571,15 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             from modules.database import db
             params = parse_qs(parsed.query)
             domain = params.get("domain", [""])[0]
+            date_from = params.get("date_from", [""])[0]
+            date_to = params.get("date_to", [""])[0]
             if db and domain:
                 logs = db.select("outreach_log",
                     filters={"channel": "eq.email", "sending_domain": f"eq.{domain}"},
                     order="sent_at.desc",
                     limit=200)
+                if date_from or date_to:
+                    logs = [l for l in (logs or []) if _in_date_range(l.get("sent_at", ""), date_from, date_to)]
                 # Enrich with lead + full tracking info
                 for log_entry in logs:
                     if log_entry.get("lead_id"):
@@ -1370,6 +1649,8 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             from modules.database import db
             params = parse_qs(parsed.query)
             stage_filter = params.get("stage", [""])[0]
+            date_from = params.get("date_from", [""])[0]
+            date_to = params.get("date_to", [""])[0]
             if db:
                 filters = {"channel": "eq.email"}
                 if stage_filter:
@@ -1378,6 +1659,8 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     filters=filters,
                     order="sent_at.desc",
                     limit=200)
+                if date_from or date_to:
+                    logs = [l for l in (logs or []) if _in_date_range(l.get("sent_at", ""), date_from, date_to)]
                 for log_entry in logs:
                     if log_entry.get("lead_id"):
                         lead_rows = db.select("leads",
@@ -1458,17 +1741,17 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                         if existing:
                             track = existing[0]
                             open_count = (track.get("open_count") or 0) + 1
-                            db.update("email_tracking", {"tracking_id": f"eq.{tid}"}, {
+                            db.update("email_tracking", {
                                 "opened": True,
                                 "opened_at": now,
                                 "open_count": open_count,
                                 "user_agent": self.headers.get("User-Agent", ""),
                                 "ip_address": self.client_address[0],
-                            })
+                            }, {"tracking_id": f"eq.{tid}"})
                             # Also update the lead's email_opened field
                             lead_id = track.get("lead_id")
                             if lead_id:
-                                db.update("leads", {"id": f"eq.{lead_id}"}, {"email_opened": True})
+                                db.update("leads", {"email_opened": True}, {"id": f"eq.{lead_id}"})
                             add_log(f"Email opened: {track.get('recipient_email', '?')} (open #{open_count})", category="email")
                 except Exception as e:
                     logger.error(f"Track open error: {e}")
@@ -1484,9 +1767,22 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/report-data":
             from modules.database import db
+            params = parse_qs(parsed.query)
+            date_from = params.get("date_from", [""])[0]
+            date_to = params.get("date_to", [""])[0]
             if db:
                 try:
                     all_leads = db.select("leads", order="created_at.desc", limit=5000)
+                    if date_from or date_to:
+                        def _lead_in_range(lead_row: dict) -> bool:
+                            dates = [
+                                lead_row.get("created_at", ""),
+                                lead_row.get("email_sent_at", ""),
+                                lead_row.get("form_last_attempted_at", ""),
+                                lead_row.get("replied_at", ""),
+                            ]
+                            return any(_in_date_range(d, date_from, date_to) for d in dates if d)
+                        all_leads = [l for l in (all_leads or []) if _lead_in_range(l)]
                     total = len(all_leads)
                     emailed = sum(1 for l in all_leads if l.get("email_sent"))
                     opened = sum(1 for l in all_leads if l.get("email_opened"))
@@ -1502,6 +1798,8 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                         "replies": replies,
                         "closed": closed,
                         "outreached": outreached,
+                        "date_from": date_from or None,
+                        "date_to": date_to or None,
                         "leads": all_leads,
                     })
                 except Exception as e:
@@ -1640,11 +1938,24 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     dbmod.db = dbmod.SupabaseREST(body.get("supabaseUrl", config.SUPABASE_URL), body.get("supabaseKey", config.SUPABASE_KEY))
 
                 elif section == "scraping":
-                    if body.get("leadTarget"): config.DAILY_LEAD_TARGET = int(body["leadTarget"])
-                    if body.get("minScore"): config.SCORE_THRESHOLDS["min_qualify"] = int(body["minScore"])
-                    if body.get("keywords") and isinstance(body["keywords"], list):
-                        config.SEARCH_KEYWORDS = [kw.strip() for kw in body["keywords"] if kw.strip()]
-                    if body.get("countries"): config.TARGET_COUNTRIES = [c.strip() for c in body["countries"].split(",") if c.strip()]
+                    if body.get("leadTarget"):
+                        config.DAILY_LEAD_TARGET = int(body["leadTarget"])
+                        _set_env("DAILY_LEAD_TARGET", config.DAILY_LEAD_TARGET)
+                    if body.get("minScore"):
+                        config.SCORE_THRESHOLDS["min_qualify"] = int(body["minScore"])
+                        _set_env("MIN_QUALIFY_SCORE", config.SCORE_THRESHOLDS["min_qualify"])
+                    if body.get("keywords"):
+                        if isinstance(body["keywords"], list):
+                            config.SEARCH_KEYWORDS = [kw.strip() for kw in body["keywords"] if kw.strip()]
+                        elif isinstance(body["keywords"], str):
+                            config.SEARCH_KEYWORDS = [kw.strip() for kw in body["keywords"].split(",") if kw.strip()]
+                        _set_env("SEARCH_KEYWORDS", json.dumps(config.SEARCH_KEYWORDS))
+                    if body.get("countries"):
+                        if isinstance(body["countries"], list):
+                            config.TARGET_COUNTRIES = [c.strip() for c in body["countries"] if c.strip()]
+                        elif isinstance(body["countries"], str):
+                            config.TARGET_COUNTRIES = [c.strip() for c in body["countries"].split(",") if c.strip()]
+                        _set_env("TARGET_COUNTRIES", json.dumps(config.TARGET_COUNTRIES))
 
                 elif section == "emailConfig":
                     if body.get("emailsPerDomain"): config.EMAILS_PER_DOMAIN = int(body["emailsPerDomain"])
@@ -1652,6 +1963,11 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                         raw_entries = [d.strip() for d in body["domains"].split("\n") if d.strip()]
                         # Store full email accounts
                         config.SENDING_EMAILS = raw_entries
+                        try:
+                            encoded = base64.b64encode(("\n".join(raw_entries)).encode("utf-8")).decode("ascii")
+                            _set_env("SENDING_EMAILS_B64", encoded)
+                        except Exception:
+                            pass
                         # Extract unique domains
                         clean_domains = []
                         for d in raw_entries:
@@ -1660,6 +1976,13 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                                 clean_domains.append(domain)
                         config.SENDING_DOMAINS = clean_domains
                         add_log(f"Sending emails updated: {', '.join(raw_entries)}", category="system")
+                    if body.get("smtpAccountsJson"):
+                        try:
+                            raw = body.get("smtpAccountsJson") or ""
+                            encoded = base64.b64encode(raw.encode("utf-8")).decode("ascii")
+                            _set_env("SMTP_ACCOUNTS_B64", encoded)
+                        except Exception:
+                            pass
                     if body.get("pauseCountry"): config.AUTO_EXCLUSION["country_pause_after_leads"] = int(body["pauseCountry"])
                     if body.get("minClose"): config.AUTO_EXCLUSION["lead_type_min_close_rate"] = float(body["minClose"]) / 100
                     if body.get("minReply"): config.AUTO_EXCLUSION["source_min_reply_rate"] = float(body["minReply"]) / 100
@@ -1765,23 +2088,67 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
         elif path == "/api/scraping-config":
             # Update scraping config at runtime
             try:
-                import config
+                import config, re
+                env_path = os.path.join(os.path.dirname(__file__), ".env")
+                env_content = ""
+                if os.path.exists(env_path):
+                    with open(env_path, "r", encoding="utf-8") as f:
+                        env_content = f.read()
+
+                def _set_env(var, val):
+                    nonlocal env_content
+                    safe_val = str(val).replace("\r", "").replace("\n", "\\n")
+                    os.environ[var] = safe_val
+                    if f"{var}=" in env_content:
+                        env_content = re.sub(f"{var}=.*", f"{var}={safe_val}", env_content)
+                    else:
+                        env_content += f"\n{var}={safe_val}"
+
                 if body.get("leadTarget"):
                     config.DAILY_LEAD_TARGET = int(body["leadTarget"])
+                    _set_env("DAILY_LEAD_TARGET", config.DAILY_LEAD_TARGET)
                 if body.get("minScore"):
                     config.SCORE_THRESHOLDS["min_qualify"] = int(body["minScore"])
+                    _set_env("MIN_QUALIFY_SCORE", config.SCORE_THRESHOLDS["min_qualify"])
                 if body.get("keywords"):
                     if isinstance(body["keywords"], list):
                         config.SEARCH_KEYWORDS = [k.strip() for k in body["keywords"] if k.strip()]
                     elif isinstance(body["keywords"], str):
                         config.SEARCH_KEYWORDS = [k.strip() + " {country}" for k in body["keywords"].split(",") if k.strip()]
+                    _set_env("SEARCH_KEYWORDS", json.dumps(config.SEARCH_KEYWORDS))
                 if body.get("countries"):
                     if isinstance(body["countries"], list):
                         config.TARGET_COUNTRIES = body["countries"]
                     elif isinstance(body["countries"], str):
                         config.TARGET_COUNTRIES = [c.strip() for c in body["countries"].split(",") if c.strip()]
+                    _set_env("TARGET_COUNTRIES", json.dumps(config.TARGET_COUNTRIES))
+
+                with open(env_path, "w", encoding="utf-8") as f:
+                    f.write((env_content or "").strip() + "\n")
+
                 add_log(f"Scraping config updated: target={config.DAILY_LEAD_TARGET}, minScore={config.SCORE_THRESHOLDS['min_qualify']}, keywords={len(config.SEARCH_KEYWORDS)}, countries={len(config.TARGET_COUNTRIES)}", category="system")
                 self._json_response({"status": "saved"})
+            except Exception as e:
+                self._json_response({"error": str(e)}, 500)
+
+        elif path == "/api/mark-replied":
+            # Manually mark a lead as replied
+            lead_id = body.get("lead_id", "")
+            if not lead_id:
+                self._json_response({"error": "Missing lead_id"}, 400)
+                return
+            try:
+                from modules.database import db
+                if db:
+                    now = datetime.now(timezone.utc).isoformat()
+                    result = db.update("leads", {"replied": True, "replied_at": now}, {"id": f"eq.{lead_id}"})
+                    if result:
+                        add_log(f"Marked lead {lead_id} as replied", category="email")
+                        self._json_response({"success": True, "lead_id": lead_id, "replied_at": now})
+                    else:
+                        self._json_response({"success": False, "error": "Lead not found"}, 404)
+                else:
+                    self._json_response({"error": "No database connection"}, 500)
             except Exception as e:
                 self._json_response({"error": str(e)}, 500)
 

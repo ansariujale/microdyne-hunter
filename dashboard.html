@@ -865,6 +865,16 @@
         <div class="stat-card orange"><div class="stat-label">Unique Opens</div><div class="stat-value" id="trackingUniqueOpens">0</div></div>
       </div>
 
+      <div class="card" style="padding:12px 16px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:11px;color:var(--text-muted);">Date Range:</span>
+          <input type="date" id="emailDateFrom" onchange="renderEmailPage()" onclick="this.showPicker()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;color-scheme:dark;">
+          <span style="font-size:11px;color:var(--text-dim);">to</span>
+          <input type="date" id="emailDateTo" onchange="renderEmailPage()" onclick="this.showPicker()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;color-scheme:dark;">
+          <button class="btn btn-sm" onclick="document.getElementById('emailDateFrom').value='';document.getElementById('emailDateTo').value='';renderEmailPage();">Reset</button>
+        </div>
+      </div>
+
       <div class="card">
         <h3>Sending Email Accounts</h3>
         <div class="table-wrap">
@@ -896,9 +906,9 @@
 
       <div class="card">
         <h3>Email Open Tracking</h3>
-        <div class="table-wrap" style="max-height:300px;overflow-y:auto;">
+        <div class="table-wrap" style="max-height:300px;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;position:relative;">
           <table>
-            <thead><tr><th>Recipient</th><th>Subject</th><th>Status</th><th>Opened At</th><th>Opens</th><th>Device</th></tr></thead>
+            <thead><tr><th>Recipient</th><th>Website URL</th><th>Subject</th><th>Status</th><th>Opened At</th><th>Opens</th><th>Device</th><th>Reply Status</th><th>Replied At</th><th>Action</th></tr></thead>
             <tbody id="openTrackingBody"></tbody>
           </table>
         </div>
@@ -1050,10 +1060,15 @@
               <option value="general_engineering">General Engineering</option>
             </select>
           </div>
-          <!-- Date Filter (dd-mm-yyyy) -->
+          <!-- Date From -->
           <div style="display:flex;align-items:center;gap:5px;">
-            <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Date:</label>
-            <input type="date" id="rptFilterDate" onchange="applyReportFilters()" onclick="this.showPicker()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;min-width:130px;cursor:pointer;color-scheme:dark;">
+            <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">From:</label>
+            <input type="date" id="rptFilterDateFrom" onchange="loadReportData()" onclick="this.showPicker()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;min-width:130px;cursor:pointer;color-scheme:dark;">
+          </div>
+          <!-- Date To -->
+          <div style="display:flex;align-items:center;gap:5px;">
+            <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">To:</label>
+            <input type="date" id="rptFilterDateTo" onchange="loadReportData()" onclick="this.showPicker()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;min-width:130px;cursor:pointer;color-scheme:dark;">
           </div>
           <!-- Search -->
           <div style="display:flex;align-items:center;gap:5px;flex:1;min-width:150px;">
@@ -1827,7 +1842,9 @@ function renderDashboardFromAPI(data){
   animateStat(document.getElementById('statReplies'), (s.replies||0).toLocaleString());
   animateStat(document.getElementById('statInterested'), (s.interested||0).toLocaleString());
   animateStat(document.getElementById('statLeadsChange'), '+'+(data.today?.leads_added||0)+' today');
-  animateStat(document.getElementById('statEmailsChange'), '+'+(data.today?.emails_sent||0)+' today');
+  const pendingEmail = s.pending_email ?? 0;
+  const remainingToday = s.email_remaining_today ?? 0;
+  animateStat(document.getElementById('statEmailsChange'), '+'+(data.today?.emails_sent||0)+' today · '+remainingToday+' left today · '+pendingEmail+' pending');
   animateStat(document.getElementById('statFormsChange'), '+'+(data.today?.forms_filled || 0)+ ' today');
   document.getElementById('navLeadCount').textContent = (data.total_leads||0).toLocaleString();
   document.getElementById('navEmailCount').textContent = (s.emailed||0).toLocaleString();
@@ -2276,6 +2293,15 @@ function exportLeads(){
 // ═══════════════════════════════════════════════════════════════
 // EMAIL PAGE
 // ═══════════════════════════════════════════════════════════════
+function getEmailDateRangeQuery(){
+  const from = document.getElementById('emailDateFrom')?.value || '';
+  const to = document.getElementById('emailDateTo')?.value || '';
+  let q = '';
+  if(from) q += (q ? '&' : '?') + 'date_from=' + encodeURIComponent(from);
+  if(to) q += (q ? '&' : '?') + 'date_to=' + encodeURIComponent(to);
+  return q;
+}
+
 async function renderEmailPage(){
   const emailed = allLeads.filter(l=>l.email_sent);
   const opened = emailed.filter(l=>l.email_opened);
@@ -2289,7 +2315,7 @@ async function renderEmailPage(){
     }
   }
 
-  // Get real email stats from server
+  // Get real email stats from server (permanent, no date filter for top cards)
   if(serverConnected){
     const emailStats = await api('/api/email-stats');
     if(emailStats){
@@ -2574,20 +2600,72 @@ async function loadTrackingStats(){
       else if(ua.includes('Windows')) device = 'Windows';
       else if(ua.includes('Mac')) device = 'Mac';
       else if(ua.includes('Linux')) device = 'Linux';
-      else if(ua.includes('Gmail') || ua.includes('Google')) device = 'Gmail';
+      else if(ua.includes('Gmail') || ua.includes('Google')) device = 'Gmail Proxy';
       else if(ua) device = ua.substring(0,30)+'...';
+      
       const deviceBadge = opened ? '<span style="font-size:11px;color:var(--text-muted);">'+device+'</span>' : '<span style="color:var(--text-dim);">-</span>';
-      return '<tr>' +
-        '<td style="font-size:11px;">'+(t.recipient_email||'-')+'</td>' +
-        '<td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;">'+(t.subject||'-')+'</td>' +
-        '<td>'+statusBadge+'</td>' +
-        '<td style="font-size:11px;color:var(--text-muted);">'+openedAt+'</td>' +
-        '<td style="font-size:12px;font-weight:600;text-align:center;">'+openCount+'</td>' +
-        '<td>'+deviceBadge+'</td>' +
-      '</tr>';
+      const websiteUrl = t.website_url ? `<a href="${t.website_url}" target="_blank" style="color:var(--cyan);text-decoration:none;font-size:11px;">${t.website_url.replace(/^https?:\/\//,'').split('/')[0]}</a>` : '-';
+      const repliedAt = t.replied_at ? new Date(t.replied_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+      
+      // Reply Status badge
+      const isReplied = t.replied || false;
+      const replyStatusBadge = isReplied
+        ? '<span class="tag tag-green" style="font-size:10px;padding:2px 8px;">Replied</span>'
+        : '<span class="tag" style="background:rgba(231,76,60,0.12);color:#e74c3c;font-size:10px;padding:2px 8px;border:1px solid rgba(231,76,60,0.2);">No Reply</span>';
+      
+      // Action button
+      const leadId = t.lead_id || '';
+      const actionBtn = isReplied
+        ? '<span style="font-size:10px;color:var(--green);">✓ Replied</span>'
+        : `<button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:rgba(46,204,113,0.15);color:#2ecc71;border:1px solid rgba(46,204,113,0.3);cursor:pointer;" onclick="markAsReplied('${leadId}',this)">Mark Replied</button>`;
+
+      return `<tr>
+        <td style="font-size:11px;">${t.recipient_email||'-'}</td>
+        <td>${websiteUrl}</td>
+        <td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${t.subject||''}">${t.subject||'-'}</td>
+        <td>${statusBadge}</td>
+        <td style="font-size:11px;color:var(--text-muted);">${openedAt}</td>
+        <td style="font-size:12px;font-weight:600;text-align:center;">${openCount}</td>
+        <td>${deviceBadge}</td>
+        <td>${replyStatusBadge}</td>
+        <td style="font-size:11px;">${repliedAt}</td>
+        <td>${actionBtn}</td>
+      </tr>`;
     }).join('');
   } else {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:20px;">No tracking data yet — send emails first</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:20px;">No tracking data yet — send emails first</td></tr>';
+  }
+}
+
+async function markAsReplied(leadId, btnEl) {
+  if (!leadId) { addLog('Error: No lead ID found'); return; }
+  try {
+    btnEl.disabled = true;
+    btnEl.textContent = 'Updating...';
+    btnEl.style.opacity = '0.5';
+    const res = await api('/api/mark-replied', 'POST', { lead_id: leadId });
+    if (res && res.success) {
+      // Update the row immediately
+      const row = btnEl.closest('tr');
+      if (row) {
+        // Update Reply Status column
+        const cells = row.querySelectorAll('td');
+        if (cells[7]) cells[7].innerHTML = '<span class="tag tag-green" style="font-size:10px;padding:2px 8px;">Replied</span>';
+        // Update Replied At column
+        if (cells[8]) cells[8].innerHTML = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+        // Update Action column
+        if (cells[9]) cells[9].innerHTML = '<span style="font-size:10px;color:var(--green);">✓ Replied</span>';
+      }
+      addLog('Marked lead as replied: ' + leadId);
+    } else {
+      btnEl.textContent = 'Failed';
+      btnEl.style.color = 'var(--red)';
+      addLog('Failed to mark replied: ' + (res?.error || 'unknown'));
+    }
+  } catch (e) {
+    btnEl.textContent = 'Error';
+    btnEl.style.color = 'var(--red)';
+    addLog('Error marking replied: ' + e.message);
   }
 }
 
@@ -2599,7 +2677,13 @@ async function loadSequenceTableFast(){
 
   if(serverConnected){
     // Load from outreach_log API (real data)
-    const data = await api('/api/email-sequences' + (stageFilter ? '?stage='+stageFilter : ''));
+    const qs = [];
+    if(stageFilter) qs.push('stage=' + encodeURIComponent(stageFilter));
+    const from = document.getElementById('emailDateFrom')?.value || '';
+    const to = document.getElementById('emailDateTo')?.value || '';
+    if(from) qs.push('date_from=' + encodeURIComponent(from));
+    if(to) qs.push('date_to=' + encodeURIComponent(to));
+    const data = await api('/api/email-sequences' + (qs.length ? '?' + qs.join('&') : ''));
     const seqs = data?.sequences || [];
 
     if(seqs.length){
@@ -2666,7 +2750,12 @@ async function viewDomainEmails(domain){
     document.getElementById('domainEmailsBody').innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-dim);padding:20px;">Connect to server to view emails</td></tr>';
     return;
   }
-  const data = await api('/api/domain-emails?domain='+encodeURIComponent(domain));
+  const from = document.getElementById('emailDateFrom')?.value || '';
+  const to = document.getElementById('emailDateTo')?.value || '';
+  let url = '/api/domain-emails?domain=' + encodeURIComponent(domain);
+  if(from) url += '&date_from=' + encodeURIComponent(from);
+  if(to) url += '&date_to=' + encodeURIComponent(to);
+  const data = await api(url);
 
   // Render summary stats
   const s = data?.summary || {};
@@ -2974,7 +3063,14 @@ function debounceReport(){
 }
 
 async function loadReportData(){
-  const data = await api('/api/report-data');
+  const dateFrom = document.getElementById('rptFilterDateFrom')?.value || '';
+  const dateTo = document.getElementById('rptFilterDateTo')?.value || '';
+  let url = '/api/report-data';
+  const qs = [];
+  if(dateFrom) qs.push('date_from=' + encodeURIComponent(dateFrom));
+  if(dateTo) qs.push('date_to=' + encodeURIComponent(dateTo));
+  if(qs.length) url += '?' + qs.join('&');
+  const data = await api(url);
   if(!data || data.error) return;
 
   // Summary text (no card elements — use inline grid)
@@ -2999,7 +3095,6 @@ async function loadReportData(){
 function applyReportFilters(){
   const activity = document.getElementById('rptFilterActivity').value;
   const type = document.getElementById('rptFilterType').value;
-  const dateFilter = document.getElementById('rptFilterDate').value;
   const search = document.getElementById('rptFilterSearch').value.toLowerCase().trim();
 
   let filtered = _rptData.filter(l => {
@@ -3014,13 +3109,6 @@ function applyReportFilters(){
 
     // Type filter
     if(type && l.lead_type !== type) return false;
-
-    // Date filter — check against any activity date (email_sent_at, form_last_attempted_at, or created_at)
-    if(dateFilter){
-      const dates = [l.created_at, l.email_sent_at, l.form_last_attempted_at, l.replied_at].filter(Boolean);
-      const matchesDate = dates.some(d => new Date(d).toISOString().split('T')[0] === dateFilter);
-      if(!matchesDate) return false;
-    }
 
     // Search filter
     if(search){
@@ -3081,9 +3169,10 @@ function applyReportFilters(){
 function resetReportFilters(){
   document.getElementById('rptFilterActivity').value = 'all';
   document.getElementById('rptFilterType').value = '';
-  document.getElementById('rptFilterDate').value = '';
+  document.getElementById('rptFilterDateFrom').value = '';
+  document.getElementById('rptFilterDateTo').value = '';
   document.getElementById('rptFilterSearch').value = '';
-  applyReportFilters();
+  loadReportData();
 }
 
 function downloadReportCSV(){

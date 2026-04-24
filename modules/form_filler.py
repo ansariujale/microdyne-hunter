@@ -1141,29 +1141,32 @@ async def run_form_filling(leads: list[dict], max_concurrent: int = 3) -> dict:
             except:
                 pass
 
-            if isinstance(result, Exception):
-                stats["failed"] += 1
-                stats["results"].append({"success": False, "error_message": str(result)[:200]})
-            elif result.get("success"):
-                stats["success"] += 1
-                stats["results"].append(result)
-            elif result.get("reason") == "no_form":
-                stats["no_form"] += 1
-                stats["results"].append(result)
-            else:
-                stats["failed"] += 1
-                stats["results"].append(result)
+        if isinstance(result, Exception):
+            stats["failed"] += 1
+            stats["results"].append({"success": False, "error_message": str(result)[:200]})
+        elif result and result.get("success"):
+            stats["success"] += 1
+            stats["results"].append(result)
+        elif result and result.get("reason") == "no_form":
+            stats["no_form"] += 1
+            stats["results"].append(result)
+        elif result:
+            stats["failed"] += 1
+            stats["results"].append(result)
 
-            # Update outreach state live for dashboard
-            outreach_state["total_processed"] = stats["success"] + stats["failed"] + stats["no_form"]
-            outreach_state["success"] = stats["success"]
-            outreach_state["failed"] = stats["failed"]
-            outreach_state["no_form"] = stats["no_form"]
+        # Update outreach state live for dashboard
+        outreach_state["total_processed"] = stats["success"] + stats["failed"] + stats["no_form"]
+        outreach_state["success"] = stats["success"]
+        outreach_state["failed"] = stats["failed"]
+        outreach_state["no_form"] = stats["no_form"]
 
-            # Brief pause between forms
-            await asyncio.sleep(1)
+        # Brief pause between forms
+        await asyncio.sleep(1)
 
-        await browser.close()
+        try:
+            await browser.close()
+        except:
+            pass
 
     logger.info(f"Form filling complete: total={stats['total']}, success={stats['success']}, "
                 f"no_form={stats['no_form']}, failed={stats['failed']}")

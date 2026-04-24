@@ -15,9 +15,7 @@ from bs4 import BeautifulSoup
 
 from config import (
     APIFY_API_KEY, APOLLO_API_KEY, APOLLO_JOB_TITLES,
-    SEARCH_KEYWORDS, TARGET_COUNTRIES,
     SCRAPE_DELAY_SECONDS, REQUEST_TIMEOUT, MAX_RETRIES,
-    DAILY_LEAD_TARGET,
 )
 from modules.database import (
     bulk_check_domains, update_source_tracker, is_segment_paused,
@@ -439,13 +437,36 @@ def run_daily_scrape() -> list[dict]:
     all_leads = []
     total_inserted = 0
     total_skipped = 0
-    target = DAILY_LEAD_TARGET
+    import config
+    target = int(getattr(config, "DAILY_LEAD_TARGET", 1000) or 1000)
+    target_countries = list(getattr(config, "TARGET_COUNTRIES", []) or [])
+    search_keywords = list(getattr(config, "SEARCH_KEYWORDS", []) or [])
 
-    logger.info(f"=== Starting daily scrape — target: {target} leads ===")
+    # SMART CALCULATION: Check existing leads to avoid over-scraping
+    from modules.database import get_total_leads
+    existing_leads = get_total_leads()
+    
+    if existing_leads >= target:
+        logger.info(f"=== Skipping scrape: DB already has {existing_leads} leads (Daily Target is {target}) ===")
+        return []
+    
+    # Adjust target to only scrape what's missing
+    original_target = target
+    target = target - existing_leads
+
+    logger.info(f"=== Starting daily scrape — Smart Target: {target} leads (Current DB: {existing_leads}/{original_target}) ===")
     logger.info(f"Apify available: {_apify_available()}")
     logger.info(f"Apollo available: {bool(APOLLO_API_KEY and 'your' not in APOLLO_API_KEY.lower())}")
 
-    for country in TARGET_COUNTRIES:
+    for country in list(getattr(config, "TARGET_COUNTRIES", []) or []):
+        import importlib
+        importlib.reload(config)
+        current_countries = list(getattr(config, "TARGET_COUNTRIES", []) or [])
+        if country not in current_countries:
+            logger.info(f"Skipping {country} as it was removed from config during scrape")
+            continue
+        search_keywords = list(getattr(config, "SEARCH_KEYWORDS", []) or [])
+
         if len(all_leads) >= target:
             break
 
@@ -480,7 +501,7 @@ def run_daily_scrape() -> list[dict]:
 
         # ── TERTIARY: DuckDuckGo/Bing search ────────────────
         if len(country_leads) < remaining:
-            for kw_template in SEARCH_KEYWORDS[:3]:  # limit to first 3 keywords
+            for kw_template in search_keywords[:3]:  # limit to first 3 keywords
                 if len(country_leads) >= remaining:
                     break
                 keyword = kw_template.format(country=country)
