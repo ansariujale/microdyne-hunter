@@ -5,11 +5,18 @@ Persists warmup state in Supabase email_warmup table.
 """
 
 import logging
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 
 from config import EMAILS_PER_DOMAIN, SENDING_EMAILS
 
 logger = logging.getLogger("flowlockhunter.warmup")
+
+def _send_date(reset_hour_local: int = 11) -> date:
+    now_local = datetime.now(timezone.utc).astimezone()
+    d = now_local.date()
+    if now_local.hour < reset_hour_local:
+        d = d - timedelta(days=1)
+    return d
 
 
 def _get_db():
@@ -23,15 +30,14 @@ def get_warmup_day(domain: str) -> int:
     db = _get_db()
     if not db:
         return 1
-    today = date.today().isoformat()
+    today = _send_date(reset_hour_local=11).isoformat()
     rows = db.select("email_warmup", columns="warmup_day",
                      filters={"domain": f"eq.{domain}", "send_date": f"eq.{today}"},
                      limit=1)
     if rows:
         return rows[0].get("warmup_day", 1)
     # Check yesterday's warmup day to continue progression
-    from datetime import timedelta
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    yesterday = (_send_date(reset_hour_local=11) - timedelta(days=1)).isoformat()
     prev = db.select("email_warmup", columns="warmup_day,emails_sent",
                      filters={"domain": f"eq.{domain}", "send_date": f"eq.{yesterday}"},
                      limit=1)
@@ -51,7 +57,7 @@ def get_emails_sent_today(domain: str) -> int:
     db = _get_db()
     if not db:
         return 0
-    today = date.today().isoformat()
+    today = _send_date(reset_hour_local=11).isoformat()
     rows = db.select("email_warmup", columns="emails_sent",
                      filters={"domain": f"eq.{domain}", "send_date": f"eq.{today}"},
                      limit=1)
@@ -69,14 +75,14 @@ def get_remaining_capacity(domain: str) -> int:
 
 def record_send(domain: str) -> bool:
     """
-    Record that an email was sent from this domain.
-    Returns True if send is within limits, False if over capacity.
+    Record that an email attempt was made by this sender.
+    Returns True if within limits, False if at/over capacity.
     """
     db = _get_db()
     if not db:
         return True  # in-memory mode, allow all
 
-    today = date.today().isoformat()
+    today = _send_date(reset_hour_local=11).isoformat()
     warmup_day = get_warmup_day(domain)
     limit = get_daily_limit(domain)
 

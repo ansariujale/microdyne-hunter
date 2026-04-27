@@ -65,7 +65,7 @@ ROZPER = FLOWLOCK
 # SCRAPING SETTINGS
 # ═══════════════════════════════════════════════════════════════
 
-DAILY_LEAD_TARGET = int(os.getenv("DAILY_LEAD_TARGET", "1000"))
+DAILY_LEAD_TARGET = int(os.getenv("DAILY_LEAD_TARGET", "120"))
 
 # Target buyer types (industrial sectors)
 LEAD_TYPES = [
@@ -136,8 +136,8 @@ APOLLO_INDUSTRIES = [
 # EMAIL SETTINGS (Instantly.dev)
 # ═══════════════════════════════════════════════════════════════
 
-DAILY_EMAIL_TARGET = 1000
-EMAILS_PER_DOMAIN = 65  # safe limit per sending domain
+DAILY_EMAIL_TARGET = int(os.getenv("DAILY_EMAIL_TARGET", "40"))
+EMAILS_PER_DOMAIN = int(os.getenv("EMAILS_PER_DOMAIN", "40"))  # safe limit per sending domain
 
 # Email subject line (editable from admin panel)
 EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Mechanical Seals & Hydraulic Fittings — FlowLock Overseas")
@@ -193,7 +193,7 @@ FOLLOWUP_SCHEDULE = {
 # FORM FILLING SETTINGS
 # ═══════════════════════════════════════════════════════════════
 
-DAILY_FORM_TARGET = 1000
+DAILY_FORM_TARGET = 130
 
 # Contact data used when filling website forms
 FORM_FILL_DATA = {

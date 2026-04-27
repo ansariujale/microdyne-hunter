@@ -654,6 +654,7 @@
       <div class="nav-item" onclick="showPage('email')">
         <span class="icon"><i data-lucide="mail"></i></span> Email
         <span class="badge" id="navEmailCount">0</span>
+        <span class="badge" id="navEmailReplyAlert" style="display:none;background:rgba(231,76,60,0.18);border:1px solid rgba(231,76,60,0.35);color:#ff6b6b;">Reply</span>
       </div>
       <div class="nav-item" onclick="showPage('forms')">
         <span class="icon"><i data-lucide="file-text"></i></span> Forms
@@ -689,6 +690,7 @@
 
     <!-- ═══════ DASHBOARD ═══════ -->
     <div class="page active" id="page-dashboard">
+      <div id="dailyResetNotice" class="alert alert-blue" style="display:none;margin-bottom:12px;"></div>
 
       <!-- AGENT CONTROL + STATUS BAR -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
@@ -908,7 +910,7 @@
         <h3>Email Open Tracking</h3>
         <div class="table-wrap" style="max-height:300px;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;position:relative;">
           <table>
-            <thead><tr><th>Recipient</th><th>Website URL</th><th>Subject</th><th>Status</th><th>Opened At</th><th>Opens</th><th>Device</th><th>Reply Status</th><th>Replied At</th><th>Action</th></tr></thead>
+            <thead><tr><th>Recipient</th><th>Website URL</th><th>Subject</th><th>Status</th><th>Opened At</th><th style="text-align:center;">Opens</th><th>Device</th><th>Reply</th><th>Replied At</th></tr></thead>
             <tbody id="openTrackingBody"></tbody>
           </table>
         </div>
@@ -1092,6 +1094,8 @@
                 <th>Contact</th>
                 <th>Email</th>
                 <th>Country</th>
+                <th>State</th>
+                <th>City</th>
                 <th>Type</th>
                 <th>Score</th>
                 <th>Email Sent</th>
@@ -1147,6 +1151,13 @@
     <div class="page" id="page-funnel">
       <div class="page-title">Sales Funnel</div>
       <div class="page-sub">Conversion pipeline analytics — track leads from discovery to results</div>
+      <div class="input-group" style="margin-bottom:12px;gap:8px;align-items:center;justify-content:flex-end;">
+        <span style="font-size:11px;color:var(--text-dim);">Date Range:</span>
+        <input type="date" id="funnelDateFrom" onchange="renderFunnel()" onclick="this.showPicker()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;color-scheme:dark;">
+        <span style="font-size:11px;color:var(--text-dim);">to</span>
+        <input type="date" id="funnelDateTo" onchange="renderFunnel()" onclick="this.showPicker()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;color-scheme:dark;">
+        <button class="btn btn-sm" onclick="document.getElementById('funnelDateFrom').value='';document.getElementById('funnelDateTo').value='';renderFunnel();">Reset</button>
+      </div>
 
       <!-- Category Tabs -->
       <div class="funnel-tabs" id="funnelTabs">
@@ -1737,6 +1748,7 @@ function showPage(name, el){
   if(name==='funnel') renderFunnel();
   if(name==='email'){
     renderEmailPage();
+    setEmailReplyAlert(false);
     // Auto-refresh email page every 30s for real-time updates
     if(window._emailRefreshInterval) clearInterval(window._emailRefreshInterval);
     window._emailRefreshInterval = setInterval(()=>{
@@ -1834,6 +1846,32 @@ async function loadData(){
   populateFilters();
 }
 
+function _validateDateRange(from, to){
+  if(!from || !to) return {ok:true};
+  if(from > to){
+    showToast('Wrong Date Range', 'From date cannot be after To date.', 'reply');
+    return {ok:false};
+  }
+  return {ok:true};
+}
+
+function _setTableLoading(tbodyId, colspan){
+  const tbody = document.getElementById(tbodyId);
+  if(!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;color:var(--text-dim);padding:20px;">Loading...</td></tr>`;
+}
+
+function renderDailyResetNotice(notice){
+  const el = document.getElementById('dailyResetNotice');
+  if(!el) return;
+  if(!notice || (notice.visible_until && (Date.now()/1000) > notice.visible_until)){
+    el.style.display = 'none';
+    return;
+  }
+  el.innerHTML = `Yesterday (${notice.business_date || '-'}) — Leads: ${notice.leads||0}, Emails: ${notice.emails||0}, Forms: ${notice.forms||0}, Opens: ${notice.opened||0}, Replies: ${notice.replied||0}`;
+  el.style.display = 'block';
+}
+
 function renderDashboardFromAPI(data){
   const s = data.stats||{};
   animateStat(document.getElementById('statTotalLeads'), (data.total_leads||0).toLocaleString());
@@ -1844,8 +1882,19 @@ function renderDashboardFromAPI(data){
   animateStat(document.getElementById('statLeadsChange'), '+'+(data.today?.leads_added||0)+' today');
   const pendingEmail = s.pending_email ?? 0;
   const remainingToday = s.email_remaining_today ?? 0;
-  animateStat(document.getElementById('statEmailsChange'), '+'+(data.today?.emails_sent||0)+' today · '+remainingToday+' left today · '+pendingEmail+' pending');
-  animateStat(document.getElementById('statFormsChange'), '+'+(data.today?.forms_filled || 0)+ ' today');
+  const y = data.daily_reset_notice || {};
+  const yEmails = (y.emails ?? null);
+  const yForms = (y.forms ?? null);
+  const yReplies = (y.replied ?? null);
+  const todayEmails = (data.today?.emails_sent || 0);
+  const todayForms = (data.today?.forms_filled || 0);
+  const todayReplies = (data.today?.replies || 0);
+  document.getElementById('statEmailsChange').textContent =
+    (yEmails!==null ? ('Yesterday '+yEmails+' · ') : '') + ('Today '+todayEmails+' · '+remainingToday+' left today · '+pendingEmail+' pending');
+  document.getElementById('statFormsChange').textContent =
+    (yForms!==null ? ('Yesterday '+yForms+' · ') : '') + ('Today '+todayForms);
+  // Show yesterday/today on replies by reusing leads-change area? keep replies card simple; use title tooltip
+  document.getElementById('statReplies').title = (yReplies!==null ? ('Yesterday '+yReplies+', Today '+todayReplies) : ('Today '+todayReplies));
   document.getElementById('navLeadCount').textContent = (data.total_leads||0).toLocaleString();
   document.getElementById('navEmailCount').textContent = (s.emailed||0).toLocaleString();
   document.getElementById('navFormCount').textContent = (s.forms_filled||0).toLocaleString();
@@ -1854,6 +1903,7 @@ function renderDashboardFromAPI(data){
   document.querySelectorAll('.stat-value').forEach(el=>el.dataset.loaded='1');
 
   renderHotLeadsFromAPI(data.hot_leads||[]);
+  renderDailyResetNotice(data.daily_reset_notice);
   renderActivityFeed();
   renderCharts();
 }
@@ -1912,6 +1962,14 @@ function renderHotLeadsFromAPI(hotLeads){
 let lastSeenLogTime = '';
 let activityFeedInitialized = false;
 const _toastSeen = new Set();
+let _replyAlertOn = false;
+
+function setEmailReplyAlert(on){
+  _replyAlertOn = !!on;
+  const b = document.getElementById('navEmailReplyAlert');
+  if(!b) return;
+  b.style.display = _replyAlertOn ? '' : 'none';
+}
 
 async function renderActivityFeed(){
   if(serverConnected){
@@ -1971,6 +2029,11 @@ function checkForNewToasts(logs){
     const data = log.data || {};
     if(data.type === 'reply_received'){
       _showToastOnce(key, 'New Reply!', `${data.sender||'Unknown'} (${data.company||''}) replied to your email`, 'reply');
+      setEmailReplyAlert(true);
+    }
+    if(data.type === 'form_reply_received'){
+      _showToastOnce(key, 'New Form Reply!', `${data.sender||'Unknown'} (${data.company||''}) replied via form`, 'reply');
+      setEmailReplyAlert(true);
     }
     if(data.type === 'email_opened'){
       _showToastOnce(key, 'Email Opened!', `${data.recipient||'A lead'} opened your email`, 'reply');
@@ -2225,6 +2288,15 @@ function filterLeads(){
   const status = document.getElementById('filterStatus').value;
   const dateVal = document.getElementById('filterLeadDate').value; // yyyy-mm-dd
 
+  const localYMD = (ts) => {
+    if(!ts) return '';
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  };
+
   filteredLeads = allLeads.filter(l=>{
     if(search && !((l.company_name||'').toLowerCase().includes(search)||(l.company_domain||'').toLowerCase().includes(search)||(l.contact_name||'').toLowerCase().includes(search)||(l.keyword_used||'').toLowerCase().includes(search))) return false;
     if(country && l.country!==country) return false;
@@ -2236,9 +2308,15 @@ function filterLeads(){
     if(status==='emailed' && !l.email_sent) return false;
     if(status==='replied' && !l.replied) return false;
     if(status==='interested' && !l.interested) return false;
+    if(!dateVal && !status){
+      const emailDone = (Number(l.sequence_stage||0) > 0) || !!l.email_sent;
+      const formStatus = (l.form_submission_status || 'pending');
+      const formDone = formStatus !== 'pending';
+      if(emailDone || formDone) return false;
+    }
     // Date filter — match selected date (dd-mm-yyyy format picker gives yyyy-mm-dd)
     if(dateVal && l.created_at){
-      const leadDate = new Date(l.created_at).toISOString().split('T')[0];
+      const leadDate = localYMD(l.created_at);
       if(leadDate !== dateVal) return false;
     }
     return true;
@@ -2254,6 +2332,10 @@ function renderLeads(){
   document.getElementById('pageInfo').textContent=`Page ${currentPage} of ${Math.ceil(filteredLeads.length/PAGE_SIZE)}`;
 
   const tbody = document.getElementById('leadsTableBody');
+  if(page.length === 0){
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:24px;">Not found</td></tr>';
+    return;
+  }
   tbody.innerHTML = page.map(l=>{
     const scoreColor = l.score>=70?'var(--green)':l.score>=40?'var(--yellow)':'var(--red)';
     const statusTag = l.interested?'<span class="tag tag-orange">Interested</span>':l.replied?'<span class="tag tag-green">Replied</span>':l.email_sent?'<span class="tag tag-purple">Emailed</span>':'<span class="tag" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);">New</span>';
@@ -2303,6 +2385,10 @@ function getEmailDateRangeQuery(){
 }
 
 async function renderEmailPage(){
+  const from = document.getElementById('emailDateFrom')?.value || '';
+  const to = document.getElementById('emailDateTo')?.value || '';
+  const validRange = _validateDateRange(from, to);
+  if(!validRange.ok) return;
   const emailed = allLeads.filter(l=>l.email_sent);
   const opened = emailed.filter(l=>l.email_opened);
   const replied = emailed.filter(l=>l.replied);
@@ -2315,17 +2401,29 @@ async function renderEmailPage(){
     }
   }
 
-  // Get real email stats from server (permanent, no date filter for top cards)
+  // Get real email stats from server (date-range aware)
   if(serverConnected){
-    const emailStats = await api('/api/email-stats');
-    if(emailStats){
+    document.getElementById('emailTodaySent').textContent = '...';
+    document.getElementById('emailOpenRate').textContent = '...';
+    document.getElementById('emailReplyRate').textContent = '...';
+    const qs = [];
+    if(from) qs.push('date_from=' + encodeURIComponent(from));
+    if(to) qs.push('date_to=' + encodeURIComponent(to));
+    const emailStats = await api('/api/email-stats' + (qs.length ? '?' + qs.join('&') : ''));
+    if(emailStats && !emailStats.error){
       document.getElementById('emailTodaySent').textContent = (emailStats.total_outreach||0).toLocaleString();
+      document.getElementById('emailOpenRate').textContent = (emailStats.open_rate||0) + '%';
+      document.getElementById('emailReplyRate').textContent = (emailStats.reply_rate||0) + '%';
+    } else {
+      document.getElementById('emailTodaySent').textContent = '0';
+      document.getElementById('emailOpenRate').textContent = '0%';
+      document.getElementById('emailReplyRate').textContent = '0%';
     }
   } else {
     document.getElementById('emailTodaySent').textContent = emailed.length.toLocaleString();
+    document.getElementById('emailOpenRate').textContent = emailed.length?(opened.length/emailed.length*100).toFixed(1)+'%':'0%';
+    document.getElementById('emailReplyRate').textContent = emailed.length?(replied.length/emailed.length*100).toFixed(1)+'%':'0%';
   }
-  document.getElementById('emailOpenRate').textContent = emailed.length?(opened.length/emailed.length*100).toFixed(1)+'%':'0%';
-  document.getElementById('emailReplyRate').textContent = emailed.length?(replied.length/emailed.length*100).toFixed(1)+'%':'0%';
 
   // Load tracking stats
   await loadTrackingStats();
@@ -2422,6 +2520,7 @@ async function renderEmailPage(){
   }
 
   // Load sequence table (from outreach_log API for live data)
+  _setTableLoading('sequenceTableBody', 7);
   await loadSequenceTableFast();
 
   // Chart — fetch real-time data from API
@@ -2574,12 +2673,16 @@ function renderDemoDomainTable(){
 
 async function loadTrackingStats(){
   if(!serverConnected) return;
-  const data = await api('/api/email-tracking');
+  const from = document.getElementById('emailDateFrom')?.value || '';
+  const to = document.getElementById('emailDateTo')?.value || '';
+  if(!_validateDateRange(from, to).ok) return;
+  const qs = [];
+  if(from) qs.push('date_from=' + encodeURIComponent(from));
+  if(to) qs.push('date_to=' + encodeURIComponent(to));
+  const data = await api('/api/email-tracking' + (qs.length ? '?' + qs.join('&') : ''));
   if(data && data.stats){
     document.getElementById('trackingTotalOpens').textContent = (data.stats.total_opened||0).toLocaleString();
     document.getElementById('trackingUniqueOpens').textContent = (data.stats.unique_opens||0).toLocaleString();
-    const rate = data.stats.open_rate||0;
-    document.getElementById('emailOpenRate').textContent = rate+'%';
   }
   // Populate open tracking table
   const tbody = document.getElementById('openTrackingBody');
@@ -2607,17 +2710,10 @@ async function loadTrackingStats(){
       const websiteUrl = t.website_url ? `<a href="${t.website_url}" target="_blank" style="color:var(--cyan);text-decoration:none;font-size:11px;">${t.website_url.replace(/^https?:\/\//,'').split('/')[0]}</a>` : '-';
       const repliedAt = t.replied_at ? new Date(t.replied_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
       
-      // Reply Status badge
       const isReplied = t.replied || false;
       const replyStatusBadge = isReplied
         ? '<span class="tag tag-green" style="font-size:10px;padding:2px 8px;">Replied</span>'
-        : '<span class="tag" style="background:rgba(231,76,60,0.12);color:#e74c3c;font-size:10px;padding:2px 8px;border:1px solid rgba(231,76,60,0.2);">No Reply</span>';
-      
-      // Action button
-      const leadId = t.lead_id || '';
-      const actionBtn = isReplied
-        ? '<span style="font-size:10px;color:var(--green);">✓ Replied</span>'
-        : `<button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:rgba(46,204,113,0.15);color:#2ecc71;border:1px solid rgba(46,204,113,0.3);cursor:pointer;" onclick="markAsReplied('${leadId}',this)">Mark Replied</button>`;
+        : '<span class="tag" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);font-size:10px;padding:2px 8px;">No Reply</span>';
 
       return `<tr>
         <td style="font-size:11px;">${t.recipient_email||'-'}</td>
@@ -2625,47 +2721,14 @@ async function loadTrackingStats(){
         <td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${t.subject||''}">${t.subject||'-'}</td>
         <td>${statusBadge}</td>
         <td style="font-size:11px;color:var(--text-muted);">${openedAt}</td>
-        <td style="font-size:12px;font-weight:600;text-align:center;">${openCount}</td>
+        <td style="font-size:13px;font-weight:700;text-align:center;color:var(--text);">${openCount}</td>
         <td>${deviceBadge}</td>
         <td>${replyStatusBadge}</td>
         <td style="font-size:11px;">${repliedAt}</td>
-        <td>${actionBtn}</td>
       </tr>`;
     }).join('');
   } else {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:20px;">No tracking data yet — send emails first</td></tr>';
-  }
-}
-
-async function markAsReplied(leadId, btnEl) {
-  if (!leadId) { addLog('Error: No lead ID found'); return; }
-  try {
-    btnEl.disabled = true;
-    btnEl.textContent = 'Updating...';
-    btnEl.style.opacity = '0.5';
-    const res = await api('/api/mark-replied', 'POST', { lead_id: leadId });
-    if (res && res.success) {
-      // Update the row immediately
-      const row = btnEl.closest('tr');
-      if (row) {
-        // Update Reply Status column
-        const cells = row.querySelectorAll('td');
-        if (cells[7]) cells[7].innerHTML = '<span class="tag tag-green" style="font-size:10px;padding:2px 8px;">Replied</span>';
-        // Update Replied At column
-        if (cells[8]) cells[8].innerHTML = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-        // Update Action column
-        if (cells[9]) cells[9].innerHTML = '<span style="font-size:10px;color:var(--green);">✓ Replied</span>';
-      }
-      addLog('Marked lead as replied: ' + leadId);
-    } else {
-      btnEl.textContent = 'Failed';
-      btnEl.style.color = 'var(--red)';
-      addLog('Failed to mark replied: ' + (res?.error || 'unknown'));
-    }
-  } catch (e) {
-    btnEl.textContent = 'Error';
-    btnEl.style.color = 'var(--red)';
-    addLog('Error marking replied: ' + e.message);
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:20px;">No tracking data for selected range</td></tr>';
   }
 }
 
@@ -2681,6 +2744,7 @@ async function loadSequenceTableFast(){
     if(stageFilter) qs.push('stage=' + encodeURIComponent(stageFilter));
     const from = document.getElementById('emailDateFrom')?.value || '';
     const to = document.getElementById('emailDateTo')?.value || '';
+    if(!_validateDateRange(from, to).ok) return;
     if(from) qs.push('date_from=' + encodeURIComponent(from));
     if(to) qs.push('date_to=' + encodeURIComponent(to));
     const data = await api('/api/email-sequences' + (qs.length ? '?' + qs.join('&') : ''));
@@ -2752,6 +2816,7 @@ async function viewDomainEmails(domain){
   }
   const from = document.getElementById('emailDateFrom')?.value || '';
   const to = document.getElementById('emailDateTo')?.value || '';
+  if(!_validateDateRange(from, to).ok) return;
   let url = '/api/domain-emails?domain=' + encodeURIComponent(domain);
   if(from) url += '&date_from=' + encodeURIComponent(from);
   if(to) url += '&date_to=' + encodeURIComponent(to);
@@ -2993,9 +3058,12 @@ async function renderFormsPage(){
         const timeStr = l.form_last_attempted_at
           ? new Date(l.form_last_attempted_at).toLocaleString()
           : '-';
+        const web = l.website_url
+          ? `<a href="${l.website_url}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:11px;text-decoration:none;cursor:pointer;" title="Ctrl+Enter or click to open">${l.website_url}</a>`
+          : '-';
         return `<tr>
           <td>${l.company_name || '-'}</td>
-          <td style="color:var(--cyan);font-size:11px;">${l.website_url || '-'}</td>
+          <td style="font-size:11px;">${web}</td>
           <td style="font-size:11px;">${l.contact_page_url || '-'}</td>
           <td>${statusTag}</td>
           <td style="font-size:10px;color:var(--text-dim);">${timeStr}</td>
@@ -3065,13 +3133,23 @@ function debounceReport(){
 async function loadReportData(){
   const dateFrom = document.getElementById('rptFilterDateFrom')?.value || '';
   const dateTo = document.getElementById('rptFilterDateTo')?.value || '';
+  if(!_validateDateRange(dateFrom, dateTo).ok) return;
+  // Loading states
+  const rptEl = document.getElementById('rptSummaryText');
+  if(rptEl) rptEl.textContent = 'Loading report data...';
+  _setTableLoading('rptTableBody', 15);
   let url = '/api/report-data';
   const qs = [];
   if(dateFrom) qs.push('date_from=' + encodeURIComponent(dateFrom));
   if(dateTo) qs.push('date_to=' + encodeURIComponent(dateTo));
   if(qs.length) url += '?' + qs.join('&');
   const data = await api(url);
-  if(!data || data.error) return;
+  if(!data || data.error){
+    if(rptEl) rptEl.textContent = data?.error ? ('Error: ' + data.error) : 'Failed to load report data';
+    const tbody = document.getElementById('rptTableBody');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;color:var(--text-dim);padding:24px;">Not found</td></tr>';
+    return;
+  }
 
   // Summary text (no card elements — use inline grid)
   const pct_email = data.total > 0 ? Math.round(data.emailed/data.total*100) : 0;
@@ -3079,13 +3157,13 @@ async function loadReportData(){
   const pct_open = data.emailed > 0 ? Math.round((data.opened||0)/data.emailed*100) : 0;
   const pct_reply = data.emailed > 0 ? Math.round(data.replies/data.emailed*100) : 0;
   document.getElementById('rptSummaryText').innerHTML =
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">' +
     '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--green);">Total leads: <strong style="color:var(--text);font-size:18px;">' + data.total + '</strong></div>' +
     '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--blue);">Emails sent: <strong style="color:var(--blue);font-size:18px;">' + data.emailed + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_email + '%)</span></div>' +
-    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--cyan);">Opened: <strong style="color:var(--cyan);font-size:18px;">' + (data.opened||0) + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_open + '%)</span></div>' +
+    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--cyan);">Unique Opens: <strong style="color:var(--cyan);font-size:18px;">' + (data.opened||0) + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_open + '%)</span></div>' +
+    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--green);">Total Opens: <strong style="color:var(--green);font-size:18px;">' + (data.total_opens||data.opened||0) + '</strong></div>' +
     '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--purple);">Forms filled: <strong style="color:var(--purple);font-size:18px;">' + data.forms_filled + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_form + '%)</span></div>' +
     '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--orange);">Replies: <strong style="color:var(--orange);font-size:18px;">' + data.replies + '</strong> <span style="font-size:11px;color:var(--text-dim);">(' + pct_reply + '%)</span></div>' +
-    '<div style="background:var(--surface2);padding:12px 16px;border-radius:8px;border-left:3px solid var(--green);">Outreached: <strong style="color:var(--text);font-size:18px;">' + data.outreached + '</strong></div>' +
     '</div>';
 
   _rptData = data.leads || [];
@@ -3122,7 +3200,7 @@ function applyReportFilters(){
 
   const tbody = document.getElementById('rptTableBody');
   if(filtered.length === 0){
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-dim);padding:24px;">No outreach activity found. Start the agent to send emails and fill forms.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;color:var(--text-dim);padding:24px;">Not found for selected filters.</td></tr>';
     return;
   }
 
@@ -3154,6 +3232,8 @@ function applyReportFilters(){
       '<td style="font-size:12px;">'+(l.contact_name||'-')+'</td>' +
       '<td style="font-size:11px;">'+(l.contact_email||'-')+'</td>' +
       '<td style="font-size:12px;">'+(l.country||'-')+'</td>' +
+      '<td style="font-size:12px;">'+(l.state||'-')+'</td>' +
+      '<td style="font-size:12px;">'+(l.city||'-')+'</td>' +
       '<td>'+typeBadge+'</td>' +
       '<td style="font-size:12px;font-weight:600;">'+(l.score||0)+'</td>' +
       '<td>'+emailBadge+'</td>' +
@@ -3178,9 +3258,10 @@ function resetReportFilters(){
 function downloadReportCSV(){
   const filtered = _rptData.filter(l => l.email_sent || l.form_filled);
   if(!filtered.length){ alert('No data to export'); return; }
-  const headers = ['Company','Contact','Email','Phone','Country','Type','Score','Email Sent','Opened','Form Filled','Website','Replied','Date'];
+  const headers = ['Company','Contact','Email','Phone','Country','State','City','Type','Score','Email Sent','Opened','Form Filled','Website','Replied','Date'];
   const rows = filtered.map(l => [
     l.company_name, l.contact_name, l.contact_email, l.contact_phone, l.country,
+    l.state, l.city,
     l.lead_type, l.score, l.email_sent?'Yes':'No', l.email_opened?'Yes':'No', l.form_filled?'Yes':'No',
     l.website_url, l.replied?'Yes':'No',
     l.created_at?new Date(l.created_at).toLocaleDateString():''
@@ -3211,6 +3292,8 @@ function downloadReportPDF(){
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;font-weight:600;">'+(l.company_name||'-')+'</td>' +
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.contact_email||'-')+'</td>' +
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.country||'-')+'</td>' +
+    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.state||'-')+'</td>' +
+    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.city||'-')+'</td>' +
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.lead_type||'-').replace(/_/g,' ')+'</td>' +
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.email_sent?'Yes':'-')+'</td>' +
     '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.email_opened?'Opened':'-')+'</td>' +
@@ -3239,7 +3322,7 @@ function downloadReportPDF(){
     '<div class="summary-item"><div class="val">'+replies+'</div><div class="lbl">Replies</div></div>' +
     '</div>' +
     '<table><thead><tr>' +
-    '<th>#</th><th>Company</th><th>Email</th><th>Country</th><th>Type</th><th>Email Sent</th><th>Opened</th><th>Form Filled</th><th>Replied</th>' +
+    '<th>#</th><th>Company</th><th>Email</th><th>Country</th><th>State</th><th>City</th><th>Type</th><th>Email Sent</th><th>Opened</th><th>Form Filled</th><th>Replied</th>' +
     '</tr></thead><tbody>' + tableRows + '</tbody></table>' +
     '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">FlowLock Overseas | FlowLockHunter v2 | ' + dateStr + '</div>' +
     '</body></html>';
@@ -3269,6 +3352,8 @@ async function loadFormResults(){
   const dateFrom = document.getElementById('formFilterDateFrom')?.value || '';
   const dateTo = document.getElementById('formFilterDateTo')?.value || '';
   const search = document.getElementById('formFilterSearch')?.value || '';
+  if(!_validateDateRange(dateFrom, dateTo).ok) return;
+  _setTableLoading('formTableBody', 6);
 
   let url = '/api/form-outreach/results?limit=200';
   if(status) url += '&status=' + encodeURIComponent(status);
@@ -3284,6 +3369,12 @@ async function loadFormResults(){
       const hasFilter = status || dateFrom || dateTo || search;
       countEl.textContent = hasFilter ? `${data.results.length} results` : '';
     }
+
+    const successCount = data.counts?.success ?? data.results.filter(r=>r.form_submission_status==='success').length;
+    const failedCount = data.counts?.failed ?? data.results.filter(r=>r.form_submission_status==='failed').length;
+    document.getElementById('formSubmitted').textContent = successCount;
+    document.getElementById('formFailed').textContent = failedCount;
+    document.getElementById('formTotal').textContent = successCount + failedCount;
 
     document.getElementById('formTableBody').innerHTML = data.results.length === 0
       ? '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:24px;">No results match your filters</td></tr>'
@@ -3301,9 +3392,12 @@ async function loadFormResults(){
         const errorStr = r.form_error_message
           ? `<span style="font-size:10px;color:var(--red);">${r.form_error_message.substring(0,80)}</span>`
           : '-';
+        const websiteCell = r.website_url
+          ? `<a href="${r.website_url}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:11px;text-decoration:none;cursor:pointer;" title="Ctrl+Enter or click to open">${r.website_url}</a>`
+          : '-';
         return `<tr>
           <td>${r.company_name || '-'}</td>
-          <td style="color:var(--cyan);font-size:11px;">${r.website_url || '-'}</td>
+          <td style="font-size:11px;">${websiteCell}</td>
           <td style="font-size:11px;">${r.contact_page_url || '-'}</td>
           <td>${statusTag}</td>
           <td style="font-size:10px;color:var(--text-dim);">${timeStr}</td>
@@ -3555,29 +3649,32 @@ async function renderFunnel(){
   // Fetch real-time data from APIs when server connected
   let total=0, qualified=0, emailed=0, formFilled=0, opened=0, replied=0, interested=0, closed=0, revenue=0;
   let formSuccess=0, formFailed=0, formNoForm=0, formPending=0, formProcessing=0;
+  const dateFrom = document.getElementById('funnelDateFrom')?.value || '';
+  const dateTo = document.getElementById('funnelDateTo')?.value || '';
+  if(!_validateDateRange(dateFrom, dateTo).ok) return;
 
   if(serverConnected){
-    // Get real funnel counts from DB
-    const funnel = await api('/api/funnel');
-    if(funnel){
-      total = funnel.total || 0;
-      qualified = funnel.qualified || 0;
-      emailed = funnel.emailed || 0;
-      formFilled = funnel.form_filled || 0;
-      opened = funnel.opened || 0;
-      replied = funnel.replied || 0;
-      interested = funnel.interested || 0;
-      closed = funnel.closed || 0;
-      revenue = funnel.mrr || 0;
-    }
-    // Get real form counts from DB
-    const formCounts = await api('/api/form-outreach/counts');
-    if(formCounts){
-      formSuccess = formCounts.success || 0;
-      formFailed = formCounts.failed || 0;
-      formNoForm = formCounts.no_form || 0;
-      formPending = formCounts.pending || 0;
-      formProcessing = formCounts.processing || 0;
+    const qs = [];
+    if(dateFrom) qs.push('date_from=' + encodeURIComponent(dateFrom));
+    if(dateTo) qs.push('date_to=' + encodeURIComponent(dateTo));
+    const report = await api('/api/report-data' + (qs.length ? '?' + qs.join('&') : ''));
+    const scoped = report?.leads || [];
+    if(report && !report.error){
+      total = report.total || 0;
+      qualified = scoped.filter(l=>(l.score||0)>=40).length;
+      emailed = report.emailed || 0;
+      formFilled = report.forms_filled || 0;
+      opened = report.opened || 0;
+      replied = report.replies || 0;
+      interested = scoped.filter(l=>l.interested).length;
+      closed = report.closed || 0;
+      revenue = scoped.reduce((s,l)=>s+(l.revenue_monthly||0),0);
+
+      formSuccess = scoped.filter(l=>l.form_submission_status==='success' || l.form_filled).length;
+      formFailed = scoped.filter(l=>l.form_submission_status==='failed' && !(l.form_error_message||'').includes('No contact form')).length;
+      formNoForm = scoped.filter(l=>l.form_submission_status==='failed' && (l.form_error_message||'').includes('No contact form')).length;
+      formPending = scoped.filter(l=>l.form_submission_status==='pending').length;
+      formProcessing = scoped.filter(l=>l.form_submission_status==='processing').length;
     }
   } else {
     // Fallback to allLeads
@@ -3844,7 +3941,12 @@ async function api(path, method='GET', body=null){
     const opts = {method, headers:{'Content-Type':'application/json'}};
     if(body) opts.body = JSON.stringify(body);
     const resp = await fetch(API+path, opts);
-    return await resp.json();
+    const data = await resp.json();
+    if(!resp.ok){
+      if(data && data.error) showToast('Request Error', data.error, 'reply');
+      return data || null;
+    }
+    return data;
   } catch(e){
     console.error('API error:', e);
     return null;
@@ -3875,6 +3977,7 @@ async function pollStatus(){
   if(!serverConnected) return;
   const data = await api('/api/status');
   if(!data) return;
+  renderDailyResetNotice(data.daily_reset_notice);
   // Update agent status indicator
   const statusEl = document.getElementById('agentStatus');
   if(data.status==='running'){
@@ -5069,6 +5172,19 @@ async function pollForReplies(){
   setInterval(()=>{ if(window.lucide) lucide.createIcons(); }, 3000);
   // Poll for new replies/opens every 10 seconds
   setInterval(pollForReplies, 10000);
+
+// Keyboard shortcut: Ctrl+Enter opens focused website links in new tab
+document.addEventListener('keydown', (ev) => {
+  if(!(ev.ctrlKey && ev.key === 'Enter')) return;
+  const el = document.activeElement;
+  if(el && el.tagName === 'A'){
+    const href = el.getAttribute('href') || '';
+    if(href.startsWith('http://') || href.startsWith('https://')){
+      window.open(href, '_blank', 'noopener');
+      ev.preventDefault();
+    }
+  }
+});
 })();
 // Cycle bubble messages
 document.addEventListener('DOMContentLoaded', () => {

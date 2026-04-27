@@ -418,12 +418,32 @@ def get_leads_for_email(limit: int = 1000) -> list[dict]:
     """Get qualified leads that haven't been emailed yet."""
     if not db:
         return []
-    return db.select("leads", filters={
-        "email_sent": "eq.false",
+    from config import SCORE_THRESHOLDS
+    min_score = SCORE_THRESHOLDS.get("min_qualify", 40)
+    _, start_utc, end_utc = get_business_day_range(reset_hour_local=11)
+
+    base_filters = {
+        "sequence_stage": "eq.0",
         "excluded": "eq.false",
-        "score": "gte.40",
-        "contact_email": "neq.",
-    }, order="score.desc", limit=limit)
+        "score": f"gte.{min_score}",
+    }
+
+    today_filters = {**base_filters, "and": f"(created_at.gte.{start_utc},created_at.lt.{end_utc})"}
+    leads = db.select("leads", filters=today_filters, order="created_at.asc", limit=limit) or []
+    if len(leads) >= limit:
+        return leads
+
+    remaining = limit - len(leads)
+    older_filters = {**base_filters, "created_at": f"lt.{start_utc}"}
+    older = db.select("leads", filters=older_filters, order="created_at.asc", limit=remaining) or []
+    seen = {l.get("id") for l in leads}
+    for l in older:
+        if l.get("id") not in seen:
+            leads.append(l)
+            seen.add(l.get("id"))
+            if len(leads) >= limit:
+                break
+    return leads
 
 
 def get_leads_for_form_fill(limit: int = 1000) -> list[dict]:
@@ -822,27 +842,38 @@ def get_total_leads() -> int:
         return 0
     return db.count("leads")
 
+def get_business_day_range(reset_hour_local: int = 11) -> tuple[str, str, str]:
+    """
+    Returns (business_date_ymd, start_utc_iso, end_utc_iso).
+    Business day resets at reset_hour_local in local time.
+    """
+    now_local = datetime.now(timezone.utc).astimezone()
+    day = now_local.date()
+    if now_local.hour < reset_hour_local:
+        day = day - timedelta(days=1)
+
+    start_local = datetime(day.year, day.month, day.day, reset_hour_local, 0, 0, tzinfo=now_local.tzinfo)
+    end_local = start_local + timedelta(days=1)
+    # Use Z-suffixed UTC timestamps for PostgREST filter compatibility.
+    start_utc = start_local.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    end_utc = end_local.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return day.isoformat(), start_utc, end_utc
+
+def get_leads_added_in_business_day(reset_hour_local: int = 11) -> int:
+    if not db:
+        return 0
+    _, start_utc, end_utc = get_business_day_range(reset_hour_local=reset_hour_local)
+    return db.count("leads", {"and": f"(created_at.gte.{start_utc},created_at.lt.{end_utc})"})
+
 
 def get_today_stats() -> dict:
     """Get today's lead/outreach counts."""
     if not db:
         return {"leads_added": 0, "emails_sent": 0, "forms_filled": 0}
-    now_local = datetime.now()
-    today = now_local.date().isoformat()
-
-    def _is_today(ts: str) -> bool:
-        if not ts:
-            return False
-        try:
-            d = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().date().isoformat()
-            return d == today
-        except Exception:
-            return False
-
-    leads = db.select("leads", columns="created_at,email_sent,email_sent_at,form_filled,form_filled_at", limit=10000) or []
-    leads_added = sum(1 for r in leads if _is_today(r.get("created_at", "")))
-    emails_sent = sum(1 for r in leads if r.get("email_sent") and _is_today(r.get("email_sent_at", "")))
-    forms_filled = sum(1 for r in leads if r.get("form_filled") and _is_today(r.get("form_filled_at", "")))
+    _, start_utc, end_utc = get_business_day_range(reset_hour_local=11)
+    leads_added = db.count("leads", {"and": f"(created_at.gte.{start_utc},created_at.lt.{end_utc})"})
+    emails_sent = db.count("outreach_log", {"and": f"(channel.eq.email,sent_at.gte.{start_utc},sent_at.lt.{end_utc})"})
+    forms_filled = db.count("leads", {"and": f"(form_last_attempted_at.gte.{start_utc},form_last_attempted_at.lt.{end_utc},form_submission_status.neq.pending)"})
 
     return {
         "leads_added": leads_added,

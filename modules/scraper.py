@@ -435,6 +435,7 @@ def run_daily_scrape() -> list[dict]:
     from modules.database import bulk_insert_leads
 
     all_leads = []
+    inserted_leads: list[dict] = []
     total_inserted = 0
     total_skipped = 0
     import config
@@ -442,19 +443,14 @@ def run_daily_scrape() -> list[dict]:
     target_countries = list(getattr(config, "TARGET_COUNTRIES", []) or [])
     search_keywords = list(getattr(config, "SEARCH_KEYWORDS", []) or [])
 
-    # SMART CALCULATION: Check existing leads to avoid over-scraping
-    from modules.database import get_total_leads
-    existing_leads = get_total_leads()
-    
-    if existing_leads >= target:
-        logger.info(f"=== Skipping scrape: DB already has {existing_leads} leads (Daily Target is {target}) ===")
+    from modules.database import get_leads_added_in_business_day
+    already_today = get_leads_added_in_business_day(reset_hour_local=11)
+    if already_today >= target:
+        logger.info(f"=== Skipping scrape: already have {already_today}/{target} leads for current day ===")
         return []
-    
-    # Adjust target to only scrape what's missing
-    original_target = target
-    target = target - existing_leads
 
-    logger.info(f"=== Starting daily scrape — Smart Target: {target} leads (Current DB: {existing_leads}/{original_target}) ===")
+    remaining_target = max(0, target - already_today)
+    logger.info(f"=== Starting daily scrape — Target: {remaining_target} leads (already today: {already_today}/{target}) ===")
     logger.info(f"Apify available: {_apify_available()}")
     logger.info(f"Apollo available: {bool(APOLLO_API_KEY and 'your' not in APOLLO_API_KEY.lower())}")
 
@@ -467,14 +463,14 @@ def run_daily_scrape() -> list[dict]:
             continue
         search_keywords = list(getattr(config, "SEARCH_KEYWORDS", []) or [])
 
-        if len(all_leads) >= target:
+        if total_inserted >= remaining_target:
             break
 
         if is_segment_paused("country", country):
             logger.info(f"Skipping paused country: {country}")
             continue
 
-        remaining = target - len(all_leads)
+        remaining = remaining_target - total_inserted
         country_leads = []
 
         # ── PRIMARY: Google Maps via Apify ──────────────────
@@ -511,7 +507,7 @@ def run_daily_scrape() -> list[dict]:
                 time.sleep(SCRAPE_DELAY_SECONDS)
 
         # ── ENRICH + INSERT INTO SUPABASE ───────────────────
-        if country_leads:
+        if country_leads and total_inserted < remaining_target:
             # Deduplicate within this batch
             seen = set()
             unique_batch = []
@@ -526,9 +522,11 @@ def run_daily_scrape() -> list[dict]:
             # Only leads with email or phone from the website are kept
             from modules.enricher import enrich_leads
             logger.info(f"[{country}] Enriching {len(unique_batch)} leads (fetching websites + inserting)...")
-            enriched_batch = enrich_leads(unique_batch, insert_immediately=True)
+            enriched_batch = enrich_leads(unique_batch, insert_immediately=True) or []
+            if enriched_batch:
+                inserted_leads.extend(enriched_batch)
             total_inserted += len(enriched_batch)
-            logger.info(f"[{country}] ✓ {len(enriched_batch)} leads saved to DB — running total: {total_inserted}")
+            logger.info(f"[{country}] ✓ {len(enriched_batch)} leads saved to DB — running total: {total_inserted}/{remaining_target}")
             flag = get_country_flag(country)
             emit_log(
                 f"{flag} {country} — Found {len(enriched_batch)} leads",
@@ -556,4 +554,4 @@ def run_daily_scrape() -> list[dict]:
         logger.info(f"=== {country}: {len(country_leads)} leads (running total: {len(all_leads)}) ===")
 
     logger.info(f"=== Daily scrape done: {total_inserted} inserted, {total_skipped} skipped, {len(all_leads)} total scraped ===")
-    return all_leads[:target]
+    return inserted_leads[:remaining_target]

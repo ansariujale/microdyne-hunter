@@ -283,11 +283,9 @@ def send_initial_emails(leads: list[dict], campaign_id: str = None) -> int:
     sent = 0
 
     for lead in leads:
-        email = lead.get("contact_email")
-        if not email:
-            continue
-
-        success = process_lead_email(lead)
+        success, reason = process_lead_email(lead, return_reason=True)
+        if not success and reason in ("sender_capacity_ended", "all_senders_at_capacity"):
+            break
         if success:
             sent += 1
 

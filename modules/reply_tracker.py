@@ -448,7 +448,11 @@ def reply_tracker_thread():
 
     while _tracker_running:
         try:
-            check_replies()
+            # Run both checks every cycle so dashboard polling is not required.
+            email_hits = check_replies()
+            form_hits = check_form_replies()
+            if email_hits or form_hits:
+                logger.info(f"[Replies] Cycle sync complete — email: {email_hits}, form: {form_hits}")
         except Exception as e:
             logger.error(f"[Replies] Tracker error: {e}")
 

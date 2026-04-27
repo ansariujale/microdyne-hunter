@@ -156,19 +156,6 @@ def process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool 
     lead_id = lead.get("id")
     email = (lead.get("contact_email") or "").strip()
 
-    # ── Validate ──────────────────────────────────────────
-    if not email or not _is_valid_email(email):
-        logger.info(f"[Email] Skip {domain}: invalid email '{email}'")
-        if return_reason:
-            return False, "invalid_email"
-        return False
-
-    if _is_junk_email(email):
-        logger.info(f"[Email] Skip {domain}: personal email domain")
-        if return_reason:
-            return False, "personal_email_domain"
-        return False
-
     try:
         # ── 1. Pick sender account ───────────────────────
         if _using_smtp():
@@ -208,6 +195,45 @@ def process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool 
 
         if not from_email_account:
             from_email_account = (SENDER_EMAIL or "").strip()
+
+        # ── Validate (counts toward daily target) ─────────
+        if not email or not _is_valid_email(email):
+            logger.info(f"[Email] Skip {domain}: invalid email '{email}'")
+            record_send(from_email_account)
+            if db and lead_id:
+                try:
+                    db.insert("outreach_log", {
+                        "lead_id": lead_id,
+                        "channel": "email",
+                        "sequence_stage": sequence_stage,
+                        "sending_domain": sending_domain,
+                        "delivery_status": "skipped",
+                    })
+                except Exception:
+                    pass
+                update_lead(lead_id, {"sequence_stage": sequence_stage, "sending_domain": sending_domain})
+            if return_reason:
+                return True, "invalid_email"
+            return True
+
+        if _is_junk_email(email):
+            logger.info(f"[Email] Skip {domain}: personal email domain")
+            record_send(from_email_account)
+            if db and lead_id:
+                try:
+                    db.insert("outreach_log", {
+                        "lead_id": lead_id,
+                        "channel": "email",
+                        "sequence_stage": sequence_stage,
+                        "sending_domain": sending_domain,
+                        "delivery_status": "skipped",
+                    })
+                except Exception:
+                    pass
+                update_lead(lead_id, {"sequence_stage": sequence_stage, "sending_domain": sending_domain})
+            if return_reason:
+                return True, "personal_email_domain"
+            return True
 
         emit_log(
             f"Generating email for {email} from {from_email_account or SENDER_EMAIL}",
@@ -297,8 +323,8 @@ def process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool 
         if db and lead_id:
             _store_variants(lead_id, all_variants, sequence_stage)
 
-        # ── 6. Record send in warmup tracker ──────────────
-        if delivery_status == "sent":
+        # ── 6. Record attempt in warmup tracker ───────────
+        if delivery_status in ("sent", "failed", "recorded"):
             record_send(from_email_account)
 
         # ── 7. Log outreach ───────────────────────────────
@@ -334,24 +360,25 @@ def process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool 
                 data={"type": "email_skipped", "recipient": email, "reason": "no_sending_method_configured"},
             )
             if return_reason:
-                return False, "no_sending_method_configured"
-            return False
+                return True, "no_sending_method_configured"
+            if lead_id:
+                update_lead(lead_id, {"sequence_stage": sequence_stage, "sending_domain": sending_domain})
+            return True
 
         # ── 8. Update lead record ─────────────────────────
-        if lead_id and delivery_status == "sent":
+        if lead_id:
+            updates = {"sequence_stage": sequence_stage, "sending_domain": sending_domain}
             now = datetime.now(timezone.utc).isoformat()
-            updates = {
-                "sequence_stage": sequence_stage,
-                "sending_domain": sending_domain,
-            }
             if sequence_stage == 1:
-                updates["email_sent"] = True
-                updates["email_sent_at"] = now
-                updates["next_followup"] = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+                if delivery_status == "sent":
+                    updates["email_sent"] = True
+                    updates["email_sent_at"] = now
+                    updates["next_followup"] = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
             elif sequence_stage < 4:
                 followup_days = {2: 4, 3: 7}
                 days = followup_days.get(sequence_stage, 7)
-                updates["next_followup"] = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+                if delivery_status == "sent":
+                    updates["next_followup"] = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
             else:
                 updates["next_followup"] = None  # sequence complete
 
@@ -367,8 +394,8 @@ def process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool 
                 data={"type": "email_failed", "recipient": email, "reason": msg},
             )
             if return_reason:
-                return False, msg
-            return False
+                return True, msg
+            return True
 
         status = "sent" if delivery_status == "sent" else "recorded"
         logger.info(

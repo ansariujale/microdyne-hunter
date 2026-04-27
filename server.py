@@ -74,6 +74,12 @@ agent_state = {
         "followups_sent": 0,
     },
     "errors": [],
+    "last_business_date": None,
+    "daily_reset_notice": None,
+    "initial_sync_done": False,
+    "lead_target_override": None,
+    "lead_target_override_business_date": None,
+    "batch_state": None,  # cached {active,batch_id,start_utc_iso,lead_target}
 }
 
 MAX_LOG = 200  # keep last N log entries
@@ -91,6 +97,243 @@ def add_log(msg, level="info", category="system", data=None):
     if len(agent_state["log"]) > MAX_LOG:
         agent_state["log"] = agent_state["log"][:MAX_LOG]
     logger.info(msg)
+
+
+def _current_business_date_str(reset_hour_local: int = 11) -> str:
+    """Return business-date key in local timezone (resets at 11:00 local)."""
+    now_local = datetime.now(timezone.utc).astimezone()
+    day = now_local.date()
+    if now_local.hour < reset_hour_local:
+        day = day - timedelta(days=1)
+    return day.isoformat()
+
+
+def _capture_previous_business_day_snapshot() -> dict:
+    """Capture yesterday metrics before resetting in-memory dashboard counters."""
+    try:
+        from modules.database import db, get_business_day_range
+        if not db:
+            return {}
+        prev_day = datetime.strptime(_current_business_date_str(), "%Y-%m-%d").date() - timedelta(days=1)
+        # Recreate the same 11 AM business window for previous day.
+        now_local = datetime.now(timezone.utc).astimezone()
+        start_local = datetime(prev_day.year, prev_day.month, prev_day.day, 11, 0, 0, tzinfo=now_local.tzinfo)
+        end_local = start_local + timedelta(days=1)
+        start_utc = start_local.astimezone(timezone.utc).isoformat()
+        end_utc = end_local.astimezone(timezone.utc).isoformat()
+        return {
+            "business_date": prev_day.isoformat(),
+            "leads": int(db.count("leads", {"and": f"(created_at.gte.{start_utc},created_at.lt.{end_utc})"}) or 0),
+            "emails": int(db.count("outreach_log", {"and": f"(channel.eq.email,sent_at.gte.{start_utc},sent_at.lt.{end_utc})"}) or 0),
+            "forms": int(db.count("leads", {"and": f"(form_last_attempted_at.gte.{start_utc},form_last_attempted_at.lt.{end_utc},form_submission_status.neq.pending)"}) or 0),
+            "opened": int(db.count("leads", {"and": f"(email_opened.eq.true,email_sent_at.gte.{start_utc},email_sent_at.lt.{end_utc})"}) or 0),
+            "replied": int(db.count("leads", {"and": f"(replied.eq.true,replied_at.gte.{start_utc},replied_at.lt.{end_utc})"}) or 0),
+            "visible_until": time.time() + 60,
+        }
+    except Exception as e:
+        logger.warning(f"Daily reset snapshot failed: {e}")
+        return {}
+
+
+def _get_batch_state_from_db() -> dict:
+    """Load last batch_state from intelligence_reports."""
+    try:
+        from modules.database import db
+        if not db:
+            return {}
+        rows = db.select(
+            "intelligence_reports",
+            columns="report_data,created_at",
+            filters={"report_type": "eq.batch_state"},
+            order="created_at.desc",
+            limit=1,
+        ) or []
+        if not rows:
+            return {}
+        data = rows[0].get("report_data") or {}
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except Exception:
+                data = {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_batch_state_to_db(state: dict) -> None:
+    """Persist batch_state snapshot into intelligence_reports."""
+    try:
+        from modules.database import db
+        if not db:
+            return
+        db.insert("intelligence_reports", {"report_type": "batch_state", "report_data": state})
+    except Exception:
+        return
+
+
+def _ensure_batch_state_loaded():
+    if agent_state.get("batch_state") is not None:
+        return
+    agent_state["batch_state"] = _get_batch_state_from_db() or {}
+
+
+def _set_batch_active(start_utc_iso: str, lead_target: int):
+    import uuid
+    state = {
+        "active": True,
+        "batch_id": str(uuid.uuid4()),
+        "start_utc_iso": start_utc_iso,
+        "lead_target": int(lead_target or 120),
+        "set_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    agent_state["batch_state"] = state
+    _save_batch_state_to_db(state)
+
+
+def _set_batch_inactive():
+    state = {
+        "active": False,
+        "batch_id": None,
+        "start_utc_iso": None,
+        "lead_target": 0,
+        "set_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    agent_state["batch_state"] = state
+    _save_batch_state_to_db(state)
+
+
+def _daily_business_reset_if_needed():
+    """Reset only in-memory run stats at the 11 AM business-day boundary."""
+    business_date = _current_business_date_str()
+    if agent_state.get("last_business_date") == business_date:
+        return
+
+    snapshot = _capture_previous_business_day_snapshot()
+    agent_state["stats"]["leads_scraped"] = 0
+    agent_state["stats"]["leads_qualified"] = 0
+    agent_state["stats"]["leads_stored"] = 0
+    agent_state["stats"]["emails_sent"] = 0
+    agent_state["stats"]["forms_filled"] = 0
+    agent_state["stats"]["followups_sent"] = 0
+    agent_state["last_business_date"] = business_date
+    agent_state["daily_reset_notice"] = snapshot or None
+    # Clear today's override when business date rolls
+    agent_state["lead_target_override"] = None
+    agent_state["lead_target_override_business_date"] = None
+    if snapshot:
+        add_log(
+            f"Daily reset @11:00 complete — yesterday: {snapshot.get('leads',0)} leads, "
+            f"{snapshot.get('emails',0)} emails, {snapshot.get('forms',0)} forms, "
+            f"{snapshot.get('opened',0)} opens, {snapshot.get('replied',0)} replies",
+            category="system",
+            data={"type": "daily_reset", **snapshot},
+        )
+
+
+def _sync_existing_lead_records():
+    """
+    One-time reconciliation:
+    - ensure emailed leads have outreach_log rows
+    - ensure form_filled leads are not stuck in pending status
+    """
+    try:
+        from modules.database import db
+        if not db:
+            return {"synced_email_logs": 0, "fixed_form_status": 0}
+
+        synced_email_logs = 0
+        fixed_form_status = 0
+        leads = db.select(
+            "leads",
+            columns="id,email_sent,email_sent_at,sending_domain,form_filled,form_submission_status,form_last_attempted_at",
+            limit=5000,
+        ) or []
+
+        for lead in leads:
+            lead_id = lead.get("id")
+            if not lead_id:
+                continue
+
+            if lead.get("email_sent"):
+                existing = db.count("outreach_log", {"lead_id": f"eq.{lead_id}", "channel": "eq.email"})
+                if int(existing or 0) == 0:
+                    db.insert("outreach_log", {
+                        "lead_id": lead_id,
+                        "channel": "email",
+                        "sequence_stage": 1,
+                        "sending_domain": lead.get("sending_domain") or "unknown",
+                        "delivery_status": "sent",
+                        "sent_at": lead.get("email_sent_at") or datetime.now(timezone.utc).isoformat(),
+                    })
+                    synced_email_logs += 1
+
+            if lead.get("form_filled") and (lead.get("form_submission_status") in (None, "", "pending")):
+                db.update("leads", {
+                    "form_submission_status": "success",
+                    "form_last_attempted_at": lead.get("form_last_attempted_at") or datetime.now(timezone.utc).isoformat(),
+                }, {"id": f"eq.{lead_id}"})
+                fixed_form_status += 1
+
+        if synced_email_logs or fixed_form_status:
+            add_log(
+                f"Reconciled Supabase data — +{synced_email_logs} email logs, fixed {fixed_form_status} form statuses",
+                category="system",
+            )
+        return {"synced_email_logs": synced_email_logs, "fixed_form_status": fixed_form_status}
+    except Exception as e:
+        logger.warning(f"Lead reconciliation failed: {e}")
+        return {"synced_email_logs": 0, "fixed_form_status": 0}
+
+
+def _trim_pending_email_queue(keep: int = 40):
+    """
+    Keep only the newest `keep` unsent leads active for email queue.
+    Remaining unsent leads are marked excluded=true (still stored in Supabase).
+    """
+    try:
+        from modules.database import db
+        import config
+        if not db:
+            return {"kept": 0, "excluded": 0}
+
+        min_score = int(getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 40) or 40)
+        pending = db.select(
+            "leads",
+            columns="id,created_at,company_domain,contact_email,email_sent,excluded,score,sequence_stage",
+            filters={
+                "email_sent": "eq.false",
+                "excluded": "eq.false",
+                "sequence_stage": "eq.0",
+                "score": f"gte.{min_score}",
+            },
+            order="created_at.desc",
+            limit=5000,
+        ) or []
+
+        keep = max(0, int(keep or 0))
+        if len(pending) <= keep:
+            return {"kept": len(pending), "excluded": 0}
+
+        keep_rows = pending[:keep]
+        exclude_rows = pending[keep:]
+
+        excluded_count = 0
+        for row in exclude_rows:
+            lead_id = row.get("id")
+            if not lead_id:
+                continue
+            db.update("leads", {"excluded": True}, {"id": f"eq.{lead_id}"})
+            excluded_count += 1
+
+        add_log(
+            f"Email queue trimmed — kept {len(keep_rows)} unsent leads, excluded {excluded_count} extra leads",
+            category="system",
+        )
+        return {"kept": len(keep_rows), "excluded": excluded_count}
+    except Exception as e:
+        logger.warning(f"Queue trim failed: {e}")
+        return {"kept": 0, "excluded": 0, "error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -303,15 +546,22 @@ def agent_loop_thread():
 
     def _get_email_remaining_today() -> int:
         import config
+        from modules.database import get_business_day_range
         if not db:
             return 0
-        today_str = datetime.now(timezone.utc).date().isoformat()
+        _, start_utc, end_utc = get_business_day_range(reset_hour_local=11)
 
         instantly_key = (getattr(config, "INSTANTLY_API_KEY", "") or "").strip()
         smtp_user = (getattr(config, "SMTP_USER", "") or "").strip()
         smtp_password = (getattr(config, "SMTP_PASSWORD", "") or "").strip()
         using_instantly = bool(instantly_key and "your" not in instantly_key.lower())
         using_smtp = bool((not using_instantly) and smtp_user and smtp_password and "your" not in smtp_password.lower())
+
+        global_daily_target = int(getattr(config, "DAILY_EMAIL_TARGET", 40) or 40)
+        sent_today_total = db.count("outreach_log", {"and": f"(channel.eq.email,sent_at.gte.{start_utc},sent_at.lt.{end_utc})"})
+        remaining_global = max(0, global_daily_target - int(sent_today_total or 0))
+        if remaining_global <= 0:
+            return 0
 
         total_remaining = 0
         sending_emails = getattr(config, "SENDING_EMAILS", []) or []
@@ -322,9 +572,9 @@ def agent_loop_thread():
             sent_today = db.count("leads", {
                 "email_sent": "eq.true",
                 "sending_domain": f"eq.{smtp_domain}",
-                "email_sent_at": f"gte.{today_str}",
+                "and": f"(email_sent_at.gte.{start_utc},email_sent_at.lt.{end_utc})",
             })
-            return max(0, emails_per - int(sent_today or 0))
+            return min(remaining_global, max(0, emails_per - int(sent_today or 0)))
 
         for addr in sending_emails:
             if "@" not in addr:
@@ -333,12 +583,13 @@ def agent_loop_thread():
             sent_today = db.count("leads", {
                 "email_sent": "eq.true",
                 "sending_domain": f"eq.{domain}",
-                "email_sent_at": f"gte.{today_str}",
+                "and": f"(email_sent_at.gte.{start_utc},email_sent_at.lt.{end_utc})",
             })
             total_remaining += max(0, emails_per - int(sent_today or 0))
 
-        return total_remaining
+        return min(remaining_global, total_remaining)
 
+    email_blocked = False
     # ══════════════════════════════════════════════════════
     # PHASE 1: STORE — Check existing leads
     # ══════════════════════════════════════════════════════
@@ -347,32 +598,59 @@ def agent_loop_thread():
     time.sleep(2)
 
     import config
-    target_leads = int(getattr(config, "DAILY_LEAD_TARGET", 1000) or 1000)
+    target_leads = int(getattr(config, "DAILY_LEAD_TARGET", 120) or 120)
+    # One-day override (used for "today keep 40")
+    biz = _current_business_date_str()
+    if agent_state.get("lead_target_override") and agent_state.get("lead_target_override_business_date") == biz:
+        target_leads = int(agent_state["lead_target_override"])
 
     total = get_total_leads()
     pending_email = get_leads_for_email(limit=1000)
+    pending_count = _get_pending_email_count()
 
-    if total >= target_leads:
-        add_log(f"✓ Found {total} leads in database (target {target_leads} reached)", category="lead")
+    if pending_count > 0:
+        add_log(
+            f"✓ Existing queue found — {pending_count} leads pending email. "
+            "Skipping new lead scraping until pending queue reaches 0.",
+            category="lead",
+        )
+        agent_state["stats"]["pending_email"] = pending_count
         agent_state["stats"]["leads_stored"] = total
     else:
-        add_log(f"Need more leads — {total}/{target_leads}. Starting scrape...", category="lead")
+        add_log(f"No pending email queue. Need fresh leads — target {target_leads}. Starting scrape...", category="lead")
+        # Start a new batch window now (business-day independent; lasts until pending hits 0)
+        _ensure_batch_state_loaded()
+        from modules.database import get_business_day_range
+        _, start_utc, _ = get_business_day_range(reset_hour_local=11)
+        _set_batch_active(start_utc_iso=start_utc, lead_target=target_leads)
 
         prev_total = total
         scrape_round = 0
-        while agent_state["agent_loop_running"] and total < target_leads and scrape_round < 2:
+        while agent_state["agent_loop_running"] and pending_count == 0 and scrape_round < 2:
             scrape_round += 1
             agent_state["current_step"] = "scrape"
-            add_log(f"▶ Scrape round {scrape_round}/2: need {target_leads - total} more leads", category="lead")
+            add_log(f"▶ Scrape round {scrape_round}/2: pending queue is 0, collecting fresh leads", category="lead")
             _run_step_sync("scrape")
 
             total = get_total_leads()
+            pending_count = _get_pending_email_count()
             inserted = total - prev_total
             agent_state["stats"]["leads_stored"] = total
-            add_log(f"✓ Scrape round {scrape_round} complete — +{max(0, inserted)} new leads (total {total}/{target_leads})", category="lead")
+            add_log(
+                f"✓ Scrape round {scrape_round} complete — +{max(0, inserted)} new leads "
+                f"(pending email queue: {pending_count}/{target_leads})",
+                category="lead",
+            )
 
             if inserted <= 0:
                 add_log("⚠ No new leads added in this round — treating countries as completed/exhausted. Continuing pipeline.", "warning", category="lead")
+                break
+
+            if pending_count > 0:
+                add_log(
+                    f"✓ Fresh queue prepared — {pending_count} leads pending email.",
+                    category="lead",
+                )
                 break
 
             prev_total = total
@@ -451,6 +729,14 @@ def agent_loop_thread():
         f"✓ Phase 2 complete — {email_sent_count} emails sent this run | {email_remaining_today} remaining today | {pending_email_total} leads still pending email",
         category="email",
     )
+    if pending_email_total > 0 and email_sent_count == 0:
+        email_blocked = True
+        add_log(
+            f"⚠ No emails were sent in this run while {pending_email_total} leads are still pending. "
+            "Not marking run as completed.",
+            "warning",
+            category="email",
+        )
 
     if not _phase_pause(3):
         _agent_cleanup(); return
@@ -538,6 +824,14 @@ def agent_loop_thread():
     # ══════════════════════════════════════════════════════
     # ALL PHASES COMPLETE — STOP AGENT
     # ══════════════════════════════════════════════════════
+    if email_blocked:
+        agent_state["current_step"] = None
+        agent_state["last_run"] = datetime.now(timezone.utc).isoformat()
+        agent_state["status"] = "idle"
+        add_log("⚠ Run finished with pending leads but 0 emails sent. Please check sender/auth/email quality.", "warning", category="system")
+        _agent_cleanup()
+        return
+
     agent_state["current_step"] = None
     agent_state["last_run"] = datetime.now(timezone.utc).isoformat()
     agent_state["status"] = "completed"
@@ -548,6 +842,12 @@ def agent_loop_thread():
 
     # Auto-stop
     _agent_cleanup()
+    # If pending queue is 0, close batch so dashboard resets counters
+    try:
+        if _get_pending_email_count() <= 0:
+            _set_batch_inactive()
+    except Exception:
+        pass
 
 
 def _agent_cleanup():
@@ -1151,6 +1451,35 @@ def _in_date_range(ts_value: str, date_from: str = "", date_to: str = "") -> boo
         return False
     return True
 
+
+def _date_and(field: str, date_from: str = "", date_to: str = "") -> str:
+    """
+    Build Supabase `and` filter for YYYY-MM-DD inclusive range on a timestamp field,
+    interpreting the dates in LOCAL timezone (so UI day matches user’s locale).
+    """
+    def _local_bounds(ymd: str, end: bool = False) -> str:
+        d = _parse_ymd(ymd)
+        if not d:
+            return ""
+        now_local = datetime.now(timezone.utc).astimezone()
+        tz = now_local.tzinfo
+        if end:
+            local_dt = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=tz)
+        else:
+            local_dt = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=tz)
+        return local_dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    parts = []
+    if date_from:
+        start_utc = _local_bounds(date_from, end=False)
+        if start_utc:
+            parts.append(f"{field}.gte.{start_utc}")
+    if date_to:
+        end_utc = _local_bounds(date_to, end=True)
+        if end_utc:
+            parts.append(f"{field}.lte.{end_utc}")
+    return "(" + ",".join(parts) + ")" if parts else "()"
+
 def _is_hidden(l: dict) -> bool:
     """Check if lead should be hidden from UI (processed > 24h ago)."""
     now = datetime.now(timezone.utc)
@@ -1180,6 +1509,13 @@ def get_dashboard_data():
     global _last_reply_check
     from modules.database import db, get_total_leads, get_today_stats, get_hot_leads
     try:
+        _daily_business_reset_if_needed()
+        if not agent_state.get("initial_sync_done"):
+            _sync_existing_lead_records()
+            agent_state["initial_sync_done"] = True
+        notice = agent_state.get("daily_reset_notice")
+        if notice and notice.get("visible_until") and time.time() > float(notice.get("visible_until")):
+            agent_state["daily_reset_notice"] = None
         import config
         # Auto-sync email_opened from tracking table
         if db:
@@ -1215,66 +1551,68 @@ def get_dashboard_data():
             except Exception as e:
                 logger.error(f"Auto reply check error: {e}")
 
+        from modules.database import get_business_day_range
         total = get_total_leads()
         today = get_today_stats()
+        _, start_utc, end_utc = get_business_day_range(reset_hour_local=11)
+        # Replies today (business-day window) for the "yesterday/today" sublines
+        try:
+            today["replies"] = int(db.count("leads", {"and": f"(replied.eq.true,replied_at.gte.{start_utc},replied_at.lt.{end_utc})"}) or 0) if db else 0
+        except Exception:
+            today["replies"] = 0
         hot = get_hot_leads()
 
-        # Get all leads for the table (limited and filtered to hide processed > 24h)
-        all_leads_raw = db.select("leads", order="created_at.desc", limit=1000) if db else []
-        leads = [l for l in all_leads_raw if not _is_hidden(l)][:500]
+        min_score = getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 40)
+        active_lead_filters = {
+            "sequence_stage": "eq.0",
+            "email_sent": "eq.false",
+            "excluded": "eq.false",
+            "score": f"gte.{min_score}",
+        }
+        all_leads_raw = db.select("leads", filters=active_lead_filters, order="created_at.desc", limit=1000) if db else []
+        leads = (all_leads_raw or [])[:500]
 
-        # Email stats
-        emailed = db.count("leads", {"email_sent": "eq.true"}) if db else 0
-        forms = db.count("leads", {"form_filled": "eq.true"}) if db else 0
-        replies = db.count("leads", {"replied": "eq.true"}) if db else 0
-        interested = db.count("leads", {"interested": "eq.true"}) if db else 0
-        closed = db.count("leads", {"closed": "eq.true"}) if db else 0
+        # Batch counters: persist across days until pending queue hits 0.
+        _ensure_batch_state_loaded()
+        bs = agent_state.get("batch_state") or {}
+        batch_active = bool(bs.get("active"))
+        batch_start = (bs.get("start_utc_iso") or "")
+        if batch_active and batch_start:
+            emailed = int(db.count("outreach_log", {"and": f"(channel.eq.email,sent_at.gte.{batch_start})"}) or 0)
+            forms = int(db.count("leads", {"and": f"(form_last_attempted_at.gte.{batch_start},form_submission_status.neq.pending)"}) or 0)
+            replies = int(db.count("leads", {"and": f"(replied.eq.true,replied_at.gte.{batch_start})"}) or 0)
+        else:
+            emailed = 0
+            forms = 0
+            replies = 0
+        interested = 0
+        closed = 0
 
         pending_email = 0
         email_remaining_today = 0
         if db:
-            min_score = getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 40)
-            pending_email = db.count("leads", {
-                "email_sent": "eq.false",
-                "excluded": "eq.false",
-                "score": f"gte.{min_score}",
-                "contact_email": "neq.",
-            })
+            pending_email = db.count("leads", active_lead_filters)
+            # If queue exists but batch_state is inactive (e.g. older run), auto-activate so dashboard shows cumulative counts.
+            try:
+                _ensure_batch_state_loaded()
+                bs = agent_state.get("batch_state") or {}
+                if pending_email > 0 and not bs.get("active"):
+                    # Always anchor to current business-day (11:00 local) start so it’s consistent even if started at 12.
+                    from modules.database import get_business_day_range
+                    _, start_utc, _ = get_business_day_range(reset_hour_local=11)
+                    _set_batch_active(start_utc_iso=str(start_utc), lead_target=int(getattr(config, "DAILY_LEAD_TARGET", 120) or 120))
+            except Exception:
+                pass
+            try:
+                from modules.database import get_business_day_range
+                _, start_utc, end_utc = get_business_day_range(reset_hour_local=11)
+                sent_today = int(db.count("outreach_log", {"and": f"(channel.eq.email,sent_at.gte.{start_utc},sent_at.lt.{end_utc})"}) or 0)
+                daily_target = int(getattr(config, "DAILY_EMAIL_TARGET", 40) or 40)
+                email_remaining_today = max(0, daily_target - sent_today)
+            except Exception:
+                email_remaining_today = 0
 
-            today_str = datetime.now(timezone.utc).date().isoformat()
-            emails_per = int(getattr(config, "EMAILS_PER_DOMAIN", 65) or 65)
-            instantly_key = (getattr(config, "INSTANTLY_API_KEY", "") or "").strip()
-            smtp_user = (getattr(config, "SMTP_USER", "") or "").strip()
-            smtp_password = (getattr(config, "SMTP_PASSWORD", "") or "").strip()
-            using_instantly = bool(instantly_key and "your" not in instantly_key.lower())
-            using_smtp = bool((not using_instantly) and smtp_user and smtp_password and "your" not in smtp_password.lower())
-
-            if using_smtp:
-                smtp_domain = smtp_user.split("@")[-1].lower() if "@" in smtp_user else smtp_user.lower()
-                sent_today = db.count("leads", {
-                    "email_sent": "eq.true",
-                    "sending_domain": f"eq.{smtp_domain}",
-                    "email_sent_at": f"gte.{today_str}",
-                })
-                email_remaining_today = max(0, emails_per - int(sent_today or 0))
-            else:
-                total_remaining = 0
-                sending_emails = getattr(config, "SENDING_EMAILS", []) or []
-                for addr in sending_emails:
-                    if "@" not in addr:
-                        continue
-                    domain = addr.split("@")[-1].lower()
-                    sent_today = db.count("leads", {
-                        "email_sent": "eq.true",
-                        "sending_domain": f"eq.{domain}",
-                        "email_sent_at": f"gte.{today_str}",
-                    })
-                    total_remaining += max(0, emails_per - int(sent_today or 0))
-                email_remaining_today = total_remaining
-
-        # Revenue
-        closed_leads = db.select("leads", columns="revenue_monthly", filters={"closed": "eq.true"}) if db else []
-        mrr = sum(r.get("revenue_monthly", 0) or 0 for r in closed_leads)
+        mrr = 0
 
         # Source tracker
         sources = db.select("source_tracker", order="last_scraped.desc", limit=100) if db else []
@@ -1284,8 +1622,10 @@ def get_dashboard_data():
 
         return {
             "connected": db is not None,
-            "total_leads": total,
+            "total_leads": pending_email,
+            "total_leads_all": total,
             "today": today,
+            "daily_reset_notice": agent_state.get("daily_reset_notice"),
             "hot_leads": hot[:10],
             "leads": leads,
             "stats": {
@@ -1319,6 +1659,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
 
         # API Routes
         if path == "/api/status":
+            _daily_business_reset_if_needed()
             self._json_response({
                 "status": agent_state["status"],
                 "current_step": agent_state["current_step"],
@@ -1330,6 +1671,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "stats": agent_state["stats"],
                 "workers": agent_state.get("worker_status", {}),
                 "completed_phases": agent_state.get("completed_phases", []),
+                "daily_reset_notice": agent_state.get("daily_reset_notice"),
             })
 
         elif path == "/api/logs":
@@ -1343,7 +1685,15 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             params = parse_qs(parsed.query)
             from modules.database import db
             if db:
+                import config
                 filters = {}
+                show_all = (params.get("show_all", ["0"])[0] == "1")
+                if not show_all:
+                    min_score = getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 40)
+                    filters["sequence_stage"] = "eq.0"
+                    filters["email_sent"] = "eq.false"
+                    filters["excluded"] = "eq.false"
+                    filters["score"] = f"gte.{min_score}"
                 if params.get("country"):
                     filters["country"] = f"eq.{params['country'][0]}"
                 if params.get("state"):
@@ -1356,15 +1706,32 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     filters["source"] = f"eq.{params['source'][0]}"
                 limit = int(params.get("limit", [100])[0])
                 offset = int(params.get("offset", [0])[0])
-                # Fetch more than limit to account for hidden ones
                 leads_raw = db.select("leads", filters=filters, order="created_at.desc", limit=max(limit * 3, 1000))
-                leads_filtered = [l for l in leads_raw if not _is_hidden(l)]
-                leads = leads_filtered[offset:offset+limit]
+                leads = (leads_raw or [])[offset:offset+limit]
                 total = db.count("leads", filters)
                 # Adjust total approximately or leave as is (total in DB)
                 self._json_response({"leads": leads, "total": total})
             else:
                 self._json_response({"leads": [], "total": 0})
+
+        elif path == "/api/leads/state-city":
+            from modules.database import db
+            if not db:
+                self._json_response({"items": []})
+                return
+            rows = db.select("leads", columns="country,state,city", order="created_at.desc", limit=5000) or []
+            items = []
+            seen = set()
+            for r in rows:
+                country = (r.get("country") or "").strip()
+                state = (r.get("state") or "").strip()
+                city = (r.get("city") or "").strip()
+                key = (country, state, city)
+                if key in seen:
+                    continue
+                seen.add(key)
+                items.append({"country": country, "state": state, "city": city})
+            self._json_response({"items": items})
 
         elif path == "/api/hot-leads":
             from modules.database import get_hot_leads
@@ -1422,22 +1789,57 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             params = parse_qs(parsed.query)
             date_from = params.get("date_from", [""])[0]
             date_to = params.get("date_to", [""])[0]
+            parsed_from = _parse_ymd(date_from) if date_from else None
+            parsed_to = _parse_ymd(date_to) if date_to else None
+            if date_from and not parsed_from:
+                self._json_response({"error": "Invalid date_from. Use YYYY-MM-DD."}, 404)
+                return
+            if date_to and not parsed_to:
+                self._json_response({"error": "Invalid date_to. Use YYYY-MM-DD."}, 404)
+                return
+            if parsed_from and parsed_to and parsed_from > parsed_to:
+                self._json_response({"error": "date_from cannot be greater than date_to."}, 404)
+                return
             if db:
-                logs = db.select("outreach_log",
-                    filters={"channel": "eq.email"},
-                    columns="delivery_status,sent_at",
-                    limit=10000)
+                filters = {"channel": "eq.email"}
                 if date_from or date_to:
-                    logs = [l for l in (logs or []) if _in_date_range(l.get("sent_at", ""), date_from, date_to)]
-                total_sent = len(logs or [])
-                recorded = sum(1 for l in (logs or []) if l.get("delivery_status") == "recorded")
-                sent = sum(1 for l in (logs or []) if l.get("delivery_status") == "sent")
-                failed = sum(1 for l in (logs or []) if l.get("delivery_status") == "failed")
+                    filters["and"] = _date_and("sent_at", date_from, date_to)
+                logs = db.select(
+                    "outreach_log",
+                    filters=filters,
+                    columns="lead_id,delivery_status,sent_at",
+                    limit=10000,
+                ) or []
+                total_sent = len(logs)
+                recorded = sum(1 for l in logs if l.get("delivery_status") == "recorded")
+                sent = sum(1 for l in logs if l.get("delivery_status") == "sent")
+                failed = sum(1 for l in logs if l.get("delivery_status") == "failed")
+
+                lead_ids = [l.get("lead_id") for l in logs if l.get("lead_id")]
+                opened = 0
+                replied = 0
+                if lead_ids:
+                    id_list = ",".join(sorted(set(str(x) for x in lead_ids)))
+                    leads = db.select(
+                        "leads",
+                        columns="id,email_opened,replied",
+                        filters={"id": f"in.({id_list})"},
+                        limit=10000,
+                    ) or []
+                    opened = sum(1 for r in leads if r.get("email_opened"))
+                    replied = sum(1 for r in leads if r.get("replied"))
+
+                open_rate = round(opened / total_sent * 100, 1) if total_sent else 0
+                reply_rate = round(replied / total_sent * 100, 1) if total_sent else 0
                 self._json_response({
                     "total_outreach": total_sent,
                     "recorded": recorded,
                     "sent": sent,
                     "failed": failed,
+                    "opened": opened,
+                    "replied": replied,
+                    "open_rate": open_rate,
+                    "reply_rate": reply_rate,
                     "date_from": date_from or None,
                     "date_to": date_to or None,
                 })
@@ -1469,15 +1871,15 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             warmup_by_domain = {w.get("domain"): w for w in (warmup or [])}
 
             for email_account in sending_emails:
-                domain = email_account.split("@")[-1] if "@" in email_account else email_account
-                w = warmup_by_domain.get(domain, {})
+                actual_domain = email_account.split("@")[-1] if "@" in email_account else email_account
+                w = warmup_by_domain.get(email_account, {})
                 daily_limit = int(w.get("daily_limit", config.EMAILS_PER_DOMAIN) or config.EMAILS_PER_DOMAIN)
                 sent_today = int(w.get("emails_sent", 0) or 0)
                 remaining_today = int(w.get("remaining", max(0, daily_limit - sent_today)) or 0)
                 warmup_day = int(w.get("warmup_day", 1) or 1)
                 d_stats = {
                     "domain": email_account,  # Show full email in UI
-                    "actual_domain": domain,
+                    "actual_domain": actual_domain,
                     "emails_sent": sent_today, "daily_limit": daily_limit,
                     "remaining": remaining_today, "warmup_day": warmup_day,
                     "total_sent": 0, "opened": 0, "replied": 0,
@@ -1489,14 +1891,14 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     try:
                         # Get real stats — match by domain (outreach_log stores domain, not email)
                         logs = db.select("outreach_log",
-                            filters={"channel": "eq.email", "sending_domain": f"eq.{domain}"},
+                            filters={"channel": "eq.email", "sending_domain": f"eq.{actual_domain}"},
                             columns="id,lead_id,delivery_status,sent_at", limit=5000)
                         d_stats["total_sent"] = len(logs)
 
                         # Open/reply stats from leads
                         leads_data = db.select("leads",
                             columns="id,email_opened,replied",
-                            filters={"email_sent": "eq.true", "sending_domain": f"eq.{domain}"},
+                            filters={"email_sent": "eq.true", "sending_domain": f"eq.{actual_domain}"},
                             limit=5000)
                         if leads_data:
                             d_stats["opened"] = sum(1 for l in leads_data if l.get("email_opened"))
@@ -1529,14 +1931,49 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/email-tracking":
             from modules.database import db
+            params = parse_qs(parsed.query)
+            date_from = params.get("date_from", [""])[0]
+            date_to = params.get("date_to", [""])[0]
+            parsed_from = _parse_ymd(date_from) if date_from else None
+            parsed_to = _parse_ymd(date_to) if date_to else None
+            if date_from and not parsed_from:
+                self._json_response({"error": "Invalid date_from. Use YYYY-MM-DD."}, 404)
+                return
+            if date_to and not parsed_to:
+                self._json_response({"error": "Invalid date_to. Use YYYY-MM-DD."}, 404)
+                return
+            if parsed_from and parsed_to and parsed_from > parsed_to:
+                self._json_response({"error": "date_from cannot be greater than date_to."}, 404)
+                return
             if db:
                 try:
-                    stats_rows = db.select("email_tracking_stats", limit=1)
-                    stats = stats_rows[0] if stats_rows else {"total_tracked": 0, "total_opened": 0, "unique_opens": 0, "open_rate": 0}
-                    # Get ALL tracking records (not just opened ones)
-                    all_tracking = db.select("email_tracking",
-                        order="created_at.desc",
-                        limit=100)
+                    # If a date range is provided, scope tracking to emails SENT in that range
+                    lead_ids_scope = []
+                    if date_from or date_to:
+                        ol_filters = {"channel": "eq.email", "and": _date_and("sent_at", date_from, date_to)}
+                        logs = db.select(
+                            "outreach_log",
+                            filters=ol_filters,
+                            columns="lead_id,sent_at,delivery_status",
+                            limit=10000,
+                        ) or []
+                        lead_ids_scope = [l.get("lead_id") for l in logs if l.get("lead_id")]
+                        lead_ids_scope = list(dict.fromkeys(lead_ids_scope))  # preserve order, unique
+                        if not lead_ids_scope:
+                            self._json_response({"stats": {"total_tracked": 0, "total_opened": 0, "unique_opens": 0, "open_rate": 0}, "all_tracking": []})
+                            return
+
+                    if lead_ids_scope:
+                        id_list = ",".join(sorted(set(str(x) for x in lead_ids_scope)))
+                        all_tracking = db.select(
+                            "email_tracking",
+                            filters={"lead_id": f"in.({id_list})"},
+                            order="created_at.desc",
+                            limit=10000,
+                        ) or []
+                    else:
+                        # No range => last N tracking rows (global view)
+                        all_tracking = db.select("email_tracking", order="created_at.desc", limit=1000) or []
                     
                     # Fetch corresponding leads to get website_url, replied, replied_at
                     lead_ids = [t['lead_id'] for t in all_tracking if t.get('lead_id')]
@@ -1544,7 +1981,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     if lead_ids:
                         # Batch fetch leads
                         id_list = ",".join([str(id) for id in set(lead_ids)])
-                        leads_res = db.select("leads", columns="id,website_url,replied,replied_at", filters={"id": f"in.({id_list})"}, limit=100)
+                        leads_res = db.select("leads", columns="id,website_url,replied,replied_at", filters={"id": f"in.({id_list})"}, limit=1000)
                         for l in leads_res:
                             leads_data[l['id']] = l
 
@@ -1561,7 +1998,35 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                                 db.update("leads", {"email_opened": True}, {"id": f"eq.{t['lead_id']}"})
                             except:
                                 pass
-                    self._json_response({"stats": stats, "all_tracking": all_tracking})
+                    total_tracked = len(all_tracking)
+                    # For dashboard cards, treat "opens" as opened leads count (<= total_tracked).
+                    opened_leads = [t for t in all_tracking if t.get("opened") and t.get("lead_id")]
+                    unique_open_ids = {t.get("lead_id") for t in opened_leads}
+                    total_opened = sum(t.get("open_count") or 1 for t in opened_leads)
+                    unique_opens = len(unique_open_ids)
+                    stats = {
+                        "total_tracked": total_tracked,
+                        "total_opened": total_opened,
+                        "unique_opens": unique_opens,
+                        "open_rate": round((total_opened / total_tracked * 100), 1) if total_tracked else 0,
+                    }
+                    # Sort: replied first, then opened, then recent
+                    def _ts(v):
+                        try:
+                            return datetime.fromisoformat((v or "").replace("Z", "+00:00")).timestamp()
+                        except Exception:
+                            return 0
+                    all_tracking_sorted = sorted(
+                        all_tracking,
+                        key=lambda t: (
+                            1 if t.get("replied") else 0,
+                            1 if t.get("opened") else 0,
+                            _ts(t.get("replied_at") or t.get("opened_at") or t.get("created_at")),
+                        ),
+                        reverse=True,
+                    )
+                    # Keep payload bounded
+                    self._json_response({"stats": stats, "all_tracking": all_tracking_sorted[:200]})
                 except Exception as e:
                     self._json_response({"stats": {"total_tracked": 0, "total_opened": 0, "unique_opens": 0, "open_rate": 0}, "all_tracking": [], "error": str(e)})
             else:
@@ -1575,11 +2040,13 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             date_to = params.get("date_to", [""])[0]
             if db and domain:
                 logs = db.select("outreach_log",
-                    filters={"channel": "eq.email", "sending_domain": f"eq.{domain}"},
+                    filters={
+                        "channel": "eq.email",
+                        "sending_domain": f"eq.{domain}",
+                        **({"and": _date_and("sent_at", date_from, date_to)} if (date_from or date_to) else {})
+                    },
                     order="sent_at.desc",
                     limit=200)
-                if date_from or date_to:
-                    logs = [l for l in (logs or []) if _in_date_range(l.get("sent_at", ""), date_from, date_to)]
                 # Enrich with lead + full tracking info
                 for log_entry in logs:
                     if log_entry.get("lead_id"):
@@ -1638,12 +2105,30 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             date_from = params.get("date_from", [None])[0]
             date_to = params.get("date_to", [None])[0]
             search = params.get("search", [None])[0]
+            parsed_from = _parse_ymd(date_from or "")
+            parsed_to = _parse_ymd(date_to or "")
+            if date_from and not parsed_from:
+                self._json_response({"error": "Invalid date_from. Use YYYY-MM-DD."}, 404)
+                return
+            if date_to and not parsed_to:
+                self._json_response({"error": "Invalid date_to. Use YYYY-MM-DD."}, 404)
+                return
+            if parsed_from and parsed_to and parsed_from > parsed_to:
+                self._json_response({"error": "date_from cannot be greater than date_to."}, 404)
+                return
             results = get_form_outreach_results(
                 limit=limit, status=status_filter,
                 date_from=date_from, date_to=date_to,
                 search=search
             )
-            self._json_response({"results": results, "total": len(results)})
+            success = sum(1 for r in results if r.get("form_submission_status") == "success")
+            failed = sum(1 for r in results if r.get("form_submission_status") == "failed")
+            processing = sum(1 for r in results if r.get("form_submission_status") == "processing")
+            self._json_response({
+                "results": results,
+                "total": len(results),
+                "counts": {"success": success, "failed": failed, "processing": processing}
+            })
 
         elif path == "/api/email-sequences":
             from modules.database import db
@@ -1651,16 +2136,27 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             stage_filter = params.get("stage", [""])[0]
             date_from = params.get("date_from", [""])[0]
             date_to = params.get("date_to", [""])[0]
+            parsed_from = _parse_ymd(date_from) if date_from else None
+            parsed_to = _parse_ymd(date_to) if date_to else None
+            if date_from and not parsed_from:
+                self._json_response({"error": "Invalid date_from. Use YYYY-MM-DD."}, 404)
+                return
+            if date_to and not parsed_to:
+                self._json_response({"error": "Invalid date_to. Use YYYY-MM-DD."}, 404)
+                return
+            if parsed_from and parsed_to and parsed_from > parsed_to:
+                self._json_response({"error": "date_from cannot be greater than date_to."}, 404)
+                return
             if db:
                 filters = {"channel": "eq.email"}
                 if stage_filter:
                     filters["sequence_stage"] = f"eq.{stage_filter}"
+                if date_from or date_to:
+                    filters["and"] = _date_and("sent_at", date_from, date_to)
                 logs = db.select("outreach_log",
                     filters=filters,
                     order="sent_at.desc",
                     limit=200)
-                if date_from or date_to:
-                    logs = [l for l in (logs or []) if _in_date_range(l.get("sent_at", ""), date_from, date_to)]
                 for log_entry in logs:
                     if log_entry.get("lead_id"):
                         lead_rows = db.select("leads",
@@ -1770,42 +2266,115 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             params = parse_qs(parsed.query)
             date_from = params.get("date_from", [""])[0]
             date_to = params.get("date_to", [""])[0]
+            parsed_from = _parse_ymd(date_from) if date_from else None
+            parsed_to = _parse_ymd(date_to) if date_to else None
+            if date_from and not parsed_from:
+                self._json_response({"error": "Invalid date_from. Use YYYY-MM-DD."}, 404)
+                return
+            if date_to and not parsed_to:
+                self._json_response({"error": "Invalid date_to. Use YYYY-MM-DD."}, 404)
+                return
+            if parsed_from and parsed_to and parsed_from > parsed_to:
+                self._json_response({"error": "date_from cannot be greater than date_to."}, 404)
+                return
             if db:
                 try:
-                    all_leads = db.select("leads", order="created_at.desc", limit=5000)
+                    # Consider up to 10k leads to ensure date filters capture older data
+                    all_leads = db.select("leads", order="created_at.desc", limit=10000) or []
+
+                    # Build range-aware lead view so report cards/table use exact selected dates.
+                    range_opened_ids = set()
                     if date_from or date_to:
-                        def _lead_in_range(lead_row: dict) -> bool:
-                            dates = [
-                                lead_row.get("created_at", ""),
-                                lead_row.get("email_sent_at", ""),
-                                lead_row.get("form_last_attempted_at", ""),
-                                lead_row.get("replied_at", ""),
-                            ]
-                            return any(_in_date_range(d, date_from, date_to) for d in dates if d)
-                        all_leads = [l for l in (all_leads or []) if _lead_in_range(l)]
-                    total = len(all_leads)
-                    emailed = sum(1 for l in all_leads if l.get("email_sent"))
-                    opened = sum(1 for l in all_leads if l.get("email_opened"))
-                    forms_filled = sum(1 for l in all_leads if l.get("form_filled"))
-                    replies = sum(1 for l in all_leads if l.get("replied"))
-                    closed = sum(1 for l in all_leads if l.get("closed"))
-                    outreached = sum(1 for l in all_leads if l.get("email_sent") or l.get("form_filled"))
+                        try:
+                            t_filters = {"opened": "eq.true", "and": _date_and("opened_at", date_from, date_to)}
+                            t_rows = db.select("email_tracking", filters=t_filters, columns="lead_id", limit=5000) or []
+                            range_opened_ids = {r.get("lead_id") for r in t_rows if r.get("lead_id")}
+                        except Exception:
+                            range_opened_ids = set()
+
+                    scoped_leads = []
+                    for lead in all_leads:
+                        email_in = _in_date_range(lead.get("email_sent_at", ""), date_from, date_to) if (date_from or date_to) else bool(lead.get("email_sent"))
+                        form_in = _in_date_range(lead.get("form_last_attempted_at", ""), date_from, date_to) if (date_from or date_to) else bool(lead.get("form_filled"))
+                        reply_in = _in_date_range(lead.get("replied_at", ""), date_from, date_to) if (date_from or date_to) else bool(lead.get("replied"))
+                        created_in = _in_date_range(lead.get("created_at", ""), date_from, date_to) if (date_from or date_to) else True
+                        opened_in = (lead.get("id") in range_opened_ids) if (date_from or date_to) else bool(lead.get("email_opened"))
+
+                        if date_from or date_to:
+                            if not (created_in or email_in or form_in or reply_in or opened_in):
+                                continue
+
+                        row = dict(lead)
+                        row["email_sent"] = bool(email_in)
+                        row["form_filled"] = bool(form_in)
+                        row["replied"] = bool(reply_in)
+                        row["email_opened"] = bool(opened_in)
+                        scoped_leads.append(row)
+
+                    total = len(scoped_leads)
+                    emailed = sum(1 for l in scoped_leads if l.get("email_sent"))
+                    opened = sum(1 for l in scoped_leads if l.get("email_opened"))
+                    forms_filled = sum(1 for l in scoped_leads if l.get("form_filled"))
+                    replies = sum(1 for l in scoped_leads if l.get("replied"))
+                    closed = sum(1 for l in scoped_leads if l.get("closed"))
+                    outreached = sum(1 for l in scoped_leads if l.get("email_sent") or l.get("form_filled"))
+                    total_opens = 0
+                    if db:
+                        try:
+                            # If no date range, we look at total tracked opens in the database
+                            tr_filters = {}
+                            if date_from or date_to:
+                                tr_filters["and"] = _date_and("created_at", date_from, date_to)
+                            
+                            tracking_res = db.select("email_tracking", filters=tr_filters, columns="open_count") or []
+                            total_opens = sum(t.get("open_count") or 0 for t in tracking_res)
+                        except Exception as e:
+                            logger.error(f"Error summing opens in report: {e}")
+
                     self._json_response({
                         "total": total,
                         "emailed": emailed,
                         "opened": opened,
+                        "total_opens": total_opens,
                         "forms_filled": forms_filled,
                         "replies": replies,
                         "closed": closed,
                         "outreached": outreached,
                         "date_from": date_from or None,
                         "date_to": date_to or None,
-                        "leads": all_leads,
+                        "leads": scoped_leads[:1000],
                     })
                 except Exception as e:
                     self._json_response({"error": str(e)}, 500)
             else:
                 self._json_response({"total":0,"emailed":0,"forms_filled":0,"replies":0,"closed":0,"outreached":0,"leads":[]})
+
+        elif path == "/api/reconcile-leads":
+            result = _sync_existing_lead_records()
+            agent_state["initial_sync_done"] = True
+            self._json_response({"status": "ok", **result})
+
+        elif path == "/api/trim-pending-emails":
+            params = parse_qs(parsed.query)
+            keep = int(params.get("keep", ["40"])[0])
+            result = _trim_pending_email_queue(keep=keep)
+            # Treat this as "today's active lead target"
+            try:
+                agent_state["lead_target_override"] = int(keep)
+                agent_state["lead_target_override_business_date"] = _current_business_date_str()
+            except Exception:
+                pass
+            # Ensure batch is marked active so dashboard counts start immediately.
+            try:
+                _ensure_batch_state_loaded()
+                bs = agent_state.get("batch_state") or {}
+                if not bs.get("active"):
+                    from modules.database import get_business_day_range
+                    _, start_utc, _ = get_business_day_range(reset_hour_local=11)
+                    _set_batch_active(start_utc_iso=start_utc, lead_target=keep)
+            except Exception:
+                pass
+            self._json_response({"status": "ok", **result})
 
         elif path == "/admin":
             self.path = "/admin-login.html"
@@ -2400,12 +2969,13 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
         """Send a JSON response."""
         try:
             self.send_response(status)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.end_headers()
-            self.wfile.write(json.dumps(data, default=str).encode())
+            payload = json.dumps(data, default=str, ensure_ascii=False).encode("utf-8", errors="replace")
+            self.wfile.write(payload)
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             pass
 
