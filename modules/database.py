@@ -99,8 +99,8 @@ class SupabaseREST:
             logger.error(f"DELETE {table} error: {e}")
             return False
 
-    def count(self, table: str, filters: dict = None) -> int:
-        """COUNT rows in a table."""
+    def count(self, table: str, filters: dict = None, strict: bool = False) -> int:
+        """COUNT rows in a table. With strict=True, raises instead of returning 0 on failure."""
         url = f"{self.base_url}/{table}?select=id"
         headers = {**self.headers, "Prefer": "count=exact", "Range-Unit": "items", "Range": "0-0"}
         if filters:
@@ -108,14 +108,20 @@ class SupabaseREST:
                 url += f"&{key}={val}"
         try:
             resp = self.client.get(url, headers=headers)
+            if strict and resp.status_code not in (200, 206):
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
             content_range = resp.headers.get("content-range", "")
             # Format: "0-0/123" or "*/0"
             if "/" in content_range:
                 total = content_range.split("/")[-1]
                 return int(total) if total != "*" else 0
+            if strict:
+                raise RuntimeError("missing content-range header")
             return 0
         except Exception as e:
             logger.error(f"COUNT {table} error: {e}")
+            if strict:
+                raise
             return 0
 
     def rpc(self, function_name: str, params: dict = None) -> list[dict]:
@@ -153,6 +159,22 @@ class InMemoryDB:
         if not filters:
             return rows
 
+        def as_str(value) -> str:
+            # Match PostgREST text forms: booleans are true/false, NULL compares as empty
+            if isinstance(value, bool):
+                return "true" if value else "false"
+            return "" if value is None else str(value)
+
+        def compare(value, val: str) -> Optional[int]:
+            """-1/0/1 like cmp; None when the row value is NULL (never matches a range filter)."""
+            if value is None:
+                return None
+            try:
+                a, b = float(value), float(val)
+            except (ValueError, TypeError):
+                a, b = as_str(value), val
+            return (a > b) - (a < b)
+
         result = []
         for row in rows:
             match = True
@@ -160,51 +182,27 @@ class InMemoryDB:
                 if not isinstance(condition, str):
                     match = False
                     break
+                value = row.get(key)
 
                 # Parse PostgREST operators: eq., neq., gte., lte., lt., in.()
                 if condition.startswith("eq."):
-                    val = condition[3:]
-                    if val == "" and row.get(key) != "":
-                        match = False
-                    elif val != "" and str(row.get(key)) != val:
-                        match = False
+                    match = as_str(value) == condition[3:]
                 elif condition.startswith("neq."):
-                    val = condition[4:]
-                    if str(row.get(key)) == val:
-                        match = False
+                    match = value is not None and as_str(value) != condition[4:]
                 elif condition.startswith("gte."):
-                    val = condition[4:]
-                    try:
-                        if float(row.get(key, 0)) < float(val):
-                            match = False
-                    except (ValueError, TypeError):
-                        if str(row.get(key, "")) < val:
-                            match = False
+                    c = compare(value, condition[4:])
+                    match = c is not None and c >= 0
                 elif condition.startswith("lte."):
-                    val = condition[4:]
-                    try:
-                        if float(row.get(key, 0)) > float(val):
-                            match = False
-                    except (ValueError, TypeError):
-                        if str(row.get(key, "")) > val:
-                            match = False
+                    c = compare(value, condition[4:])
+                    match = c is not None and c <= 0
                 elif condition.startswith("lt."):
-                    val = condition[3:]
-                    try:
-                        if float(row.get(key, 0)) >= float(val):
-                            match = False
-                    except (ValueError, TypeError):
-                        if str(row.get(key, "")) >= val:
-                            match = False
+                    c = compare(value, condition[3:])
+                    match = c is not None and c < 0
                 elif condition.startswith("in.(") and condition.endswith(")"):
-                    val_str = condition[4:-1]
-                    vals = [v.strip().strip('"') for v in val_str.split(",")]
-                    if str(row.get(key)) not in vals:
-                        match = False
+                    vals = [v.strip().strip('"') for v in condition[4:-1].split(",")]
+                    match = as_str(value) in vals
                 else:
-                    # Assume direct equality if no operator
-                    if str(row.get(key)) != condition:
-                        match = False
+                    match = as_str(value) == condition
 
                 if not match:
                     break
@@ -282,7 +280,7 @@ class InMemoryDB:
         logger.debug(f"Updated {table}: {row_to_update.get('id')}")
         return row_to_update
 
-    def count(self, table: str, filters: dict = None) -> int:
+    def count(self, table: str, filters: dict = None, strict: bool = False) -> int:
         """COUNT rows in a table."""
         if table not in self.tables:
             logger.warning(f"Table {table} does not exist in in-memory DB")
@@ -414,36 +412,133 @@ def update_lead(lead_id: str, updates: dict) -> Optional[dict]:
     return db.update("leads", updates, {"id": f"eq.{lead_id}"})
 
 
-def get_leads_for_email(limit: int = 1000) -> list[dict]:
-    """Get qualified leads that haven't been emailed yet."""
-    if not db:
-        return []
-    from config import SCORE_THRESHOLDS
-    min_score = SCORE_THRESHOLDS.get("min_qualify", 40)
-    _, start_utc, end_utc = get_business_day_range(reset_hour_local=11)
+def _min_qualify_score() -> int:
+    import config
+    return int(getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 60) or 60)
 
-    base_filters = {
+
+def _pending_email_filters() -> dict:
+    return {
         "sequence_stage": "eq.0",
         "excluded": "eq.false",
-        "score": f"gte.{min_score}",
+        "score": f"gte.{_min_qualify_score()}",
+        "contact_email": "neq.",
     }
 
-    today_filters = {**base_filters, "and": f"(created_at.gte.{start_utc},created_at.lt.{end_utc})"}
-    leads = db.select("leads", filters=today_filters, order="created_at.asc", limit=limit) or []
-    if len(leads) >= limit:
-        return leads
 
-    remaining = limit - len(leads)
-    older_filters = {**base_filters, "created_at": f"lt.{start_utc}"}
-    older = db.select("leads", filters=older_filters, order="created_at.asc", limit=remaining) or []
-    seen = {l.get("id") for l in leads}
-    for l in older:
-        if l.get("id") not in seen:
-            leads.append(l)
-            seen.add(l.get("id"))
-            if len(leads) >= limit:
-                break
-    return leads
+def _pending_form_filters() -> dict:
+    return {
+        "form_submission_status": "eq.pending",
+        "form_filled": "eq.false",
+        "excluded": "eq.false",
+        "score": f"gte.{_min_qualify_score()}",
+    }
+
+
+def get_leads_for_email(limit: int = 1000) -> list[dict]:
+    """Un-emailed qualified leads with an email address, oldest first, best score first within ties."""
+    if not db:
+        return []
+    return db.select("leads", filters=_pending_email_filters(), order="created_at.asc", limit=limit) or []
+
+
+def get_pending_email_count() -> int:
+    """Leads that still have never been emailed."""
+    if not db:
+        return 0
+    try:
+        return int(db.count("leads", _pending_email_filters()) or 0)
+    except Exception:
+        return 0
+
+
+def get_pending_form_count() -> int:
+    """Leads whose contact form hasn't been completed yet (queued, or claimed by an interrupted run)."""
+    if not db:
+        return 0
+    try:
+        queued = int(db.count("leads", _pending_form_filters()) or 0)
+        claimed = int(db.count("leads", {"form_submission_status": "eq.processing", "excluded": "eq.false"}) or 0)
+        return queued + claimed
+    except Exception:
+        return 0
+
+
+def release_stuck_form_leads() -> int:
+    """Return leads left in 'processing' by an interrupted run to the pending queue."""
+    if not db:
+        return 0
+    stuck = db.select("leads", columns="id", filters={"form_submission_status": "eq.processing"}, limit=1000) or []
+    for row in stuck:
+        db.update("leads", {"form_submission_status": "pending"}, {"id": f"eq.{row['id']}"})
+    return len(stuck)
+
+
+def _today_start_utc() -> str:
+    import config
+    _, start_utc, _ = get_business_day_range(reset_hour_local=getattr(config, "BUSINESS_DAY_RESET_HOUR", 11))
+    return start_utc
+
+
+def get_emails_sent_today(strict: bool = False) -> int:
+    """Emails actually delivered in the current business day (all sequence stages).
+    strict=True raises if the count can't be verified, so callers can fail closed."""
+    if not db:
+        return 0
+    filters = {
+        "channel": "eq.email",
+        "delivery_status": "eq.sent",
+        "sent_at": f"gte.{_today_start_utc()}",
+    }
+    if strict:
+        return int(db.count("outreach_log", filters, strict=True) or 0)
+    try:
+        return int(db.count("outreach_log", filters) or 0)
+    except Exception as e:
+        logger.error(f"Error counting today's emails: {e}")
+        return 0
+
+
+def get_forms_submitted_today(strict: bool = False) -> int:
+    """Contact forms successfully submitted in the current business day."""
+    if not db:
+        return 0
+    filters = {
+        "form_filled": "eq.true",
+        "form_filled_at": f"gte.{_today_start_utc()}",
+    }
+    if strict:
+        return int(db.count("leads", filters, strict=True) or 0)
+    try:
+        return int(db.count("leads", filters) or 0)
+    except Exception as e:
+        logger.error(f"Error counting today's forms: {e}")
+        return 0
+
+
+def get_daily_quota_status() -> dict:
+    """Today's caps, usage, and the pending queues that decide whether extraction runs."""
+    import config
+    email_limit = int(getattr(config, "DAILY_EMAIL_LIMIT", 10))
+    form_limit = int(getattr(config, "DAILY_FORM_LIMIT", 100))
+    emails_sent = get_emails_sent_today()
+    forms_sent = get_forms_submitted_today()
+    pending_email = get_pending_email_count()
+    pending_form = get_pending_form_count()
+    return {
+        "email_limit": email_limit,
+        "emails_sent_today": emails_sent,
+        "emails_remaining_today": max(0, email_limit - emails_sent),
+        "form_limit": form_limit,
+        "forms_submitted_today": forms_sent,
+        "forms_remaining_today": max(0, form_limit - forms_sent),
+        "pending_email": pending_email,
+        "pending_form": pending_form,
+        "extraction_needed": pending_email == 0 and pending_form == 0,
+        "auto_daily_run": bool(getattr(config, "AUTO_DAILY_RUN", True)),
+        "daily_run_time": f"{config.DAILY_RUN_HOUR:02d}:{config.DAILY_RUN_MINUTE:02d}",
+        "reset_time": f"{config.BUSINESS_DAY_RESET_HOUR:02d}:00",
+    }
 
 
 def get_leads_for_form_fill(limit: int = 1000) -> list[dict]:
@@ -468,15 +563,9 @@ def get_leads_for_form_outreach(limit: int = 10) -> list[dict]:
     if not db:
         return []
 
-    # Step 1: Get candidate leads (pending + never filled + score >= 40)
-    from config import SCORE_THRESHOLDS
-    min_score = SCORE_THRESHOLDS.get("min_qualify", 40)
-    candidates = db.select("leads", filters={
-        "form_submission_status": "eq.pending",
-        "form_filled": "eq.false",
-        "excluded": "eq.false",
-        "score": f"gte.{min_score}",
-    }, order="created_at.asc", limit=limit * 3)  # fetch extra to allow filtering
+    # Step 1: Get candidate leads (pending + never filled + qualified score)
+    candidates = db.select("leads", filters=_pending_form_filters(),
+                           order="created_at.asc", limit=limit * 3)  # fetch extra to allow filtering
 
     if not candidates:
         return []
@@ -499,6 +588,8 @@ def get_leads_for_form_outreach(limit: int = 10) -> list[dict]:
     for lead in candidates:
         url = (lead.get("website_url") or "").strip().lower().rstrip("/")
         if not url:
+            # Otherwise it stays "pending" forever and blocks the next extraction
+            update_form_status(lead["id"], "failed", error_msg="No website URL")
             continue
         if url in attempted_urls:
             # Mark this lead as already done so it's not picked again

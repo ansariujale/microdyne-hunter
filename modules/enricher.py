@@ -274,111 +274,220 @@ def fetch_website_html(url: str, timeout: int = None) -> Optional[str]:
         return None
 
 
+# ═══════════════════════════════════════════════════════════════
+# QUALITY GATE — only genuine, relevant buyers get stored
+# ═══════════════════════════════════════════════════════════════
+
+# B2B directories / marketplaces list other companies — they are not the company itself.
+DIRECTORY_DOMAINS = (
+    "indiamart.com", "justdial.com", "tradeindia.com", "exportersindia.com", "alibaba.com",
+    "made-in-china.com", "sulekha.com", "yellowpages", "dial4trade.com", "go4worldbusiness.com",
+    "kompass.com", "europages", "thomasnet.com", "zaubacorp.com", "tofler.in", "globalsources.com",
+    "ec21.com", "tradekey.com", "amazon.", "flipkart.com", "yelp.", "manta.com", "hotfrog.",
+    "microdyneengineering.com",
+)
+
+# Other CNC job shops are competitors, not buyers.
+COMPETITOR_PHRASES = (
+    "job work", "jobwork", "turning works", "turned component", "turned parts", "cnc works",
+    "cnc machining services", "machine shop", "precision turned",
+)
+
+RELEVANCE_SIGNALS = (
+    "manufactur", "oem", "factory", "machinery", "machine", "pump", "valve", "cylinder",
+    "hydraulic", "pneumatic", "gear", "compressor", "motor", "blower", "agitator", "mixer",
+    "automotive", "auto component", "equipment", "industrial", "engineering",
+)
+
+UNUSABLE_EMAIL_LOCALPARTS = (
+    "noreply", "no-reply", "donotreply", "do-not-reply", "career", "jobs", "hr", "recruit",
+    "resume", "cv", "webmaster", "privacy", "abuse", "postmaster", "press", "media",
+)
+
+PREFERRED_EMAIL_LOCALPARTS = (
+    "sales", "purchase", "procurement", "enquiry", "inquiry", "info", "contact", "marketing",
+    "business", "export",
+)
+
+
+def _brand_label(domain: str) -> str:
+    return (domain or "").lower().replace("www.", "").split(".")[0]
+
+
+def pick_business_email(emails: list[str], company_domain: str) -> str:
+    """Best usable email on the company's own domain, preferring sales/purchase inboxes."""
+    import config
+    personal = {d.lower() for d in getattr(config, "JUNK_EMAIL_DOMAINS", set())}
+    brand = _brand_label(company_domain)
+    candidates = []
+    for email in emails:
+        email = email.strip().lower().rstrip(".")
+        if "@" not in email or _is_junk_email(email):
+            continue
+        local, domain = email.split("@", 1)
+        if domain in personal:
+            continue
+        if not (domain == company_domain or domain.endswith("." + company_domain)
+                or company_domain.endswith("." + domain) or _brand_label(domain) == brand):
+            continue
+        if any(bad in local for bad in UNUSABLE_EMAIL_LOCALPARTS):
+            continue
+        rank = next((i for i, p in enumerate(PREFERRED_EMAIL_LOCALPARTS) if local.startswith(p)),
+                    len(PREFERRED_EMAIL_LOCALPARTS))
+        candidates.append((rank, email))
+    return min(candidates)[1] if candidates else ""
+
+
+def _page_summary(raw_html: str) -> dict:
+    """Title, meta description, and lowercase visible text of a page."""
+    title = re.search(r"<title[^>]*>([\s\S]*?)</title>", raw_html, re.IGNORECASE)
+    meta = re.search(r'<meta[^>]+name=["\']description["\'][^>]*content=["\']([^"\']*)', raw_html, re.IGNORECASE)
+    text = re.sub(r"<(script|style)[\s\S]*?</\1>", " ", raw_html, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return {
+        "title": html.unescape(title.group(1)).strip() if title else "",
+        "description": html.unescape(meta.group(1)).strip() if meta else "",
+        "text": " ".join(html.unescape(text).split())[:40000].lower(),
+    }
+
+
+def assess_lead_quality(lead: dict) -> tuple[bool, str]:
+    """Final go/no-go for storing a lead. Returns (passes, reason)."""
+    import config
+    domain = (lead.get("company_domain") or "").lower()
+    if any(d in domain for d in DIRECTORY_DOMAINS):
+        return False, "directory/marketplace site"
+    if not lead.get("_site_reachable"):
+        return False, "website not reachable"
+    identity = f"{lead.get('company_name', '')} {lead.get('_page_title', '')}".lower()
+    if any(p in identity for p in COMPETITOR_PHRASES):
+        return False, "CNC job shop (competitor)"
+    if lead.get("_relevance_hits", 0) < 2:
+        return False, "website not relevant to manufacturing"
+    if not lead.get("contact_email") and not lead.get("has_contact_form"):
+        return False, "no business email or contact form"
+    if lead.get("lead_type", "other") == "other":
+        return False, "not a target industry"
+    min_score = int(getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 60) or 60)
+    if int(lead.get("score") or 0) < min_score:
+        return False, f"score {lead.get('score')} below {min_score}"
+    return True, "passed"
+
+
 def enrich_lead(lead: dict) -> dict:
     """
-    Enrich a single lead by fetching its website and extracting contacts.
-    Clears any pre-existing Apify contact data — only website-extracted data counts.
-    Returns the enriched lead.
+    Fetch the company website (plus its contact page if needed), pick a business email
+    on the company's own domain, detect a contact form, and classify relevance.
+    Only website-extracted contact data is kept.
     """
-    website = lead.get("website_url") or lead.get("website") or ""
-    domain = lead.get("company_domain", "")
+    from modules.scraper import classify_lead_type
 
+    website = lead.get("website_url") or lead.get("website") or ""
+    domain = (lead.get("company_domain") or "").lower()
     if not website and domain:
         website = f"https://{domain}"
 
-    # Clear pre-existing contact data from Apify — we only want website-extracted data
     lead["contact_email"] = ""
     lead["contact_phone"] = ""
+    lead["_site_reachable"] = False
+    lead["_relevance_hits"] = 0
 
     logger.info(f"[Enricher] Fetching {website} ...")
-
     raw_html = fetch_website_html(website)
     if not raw_html:
-        logger.info(f"[Enricher] No HTML from {website} — no contact info extracted")
+        logger.info(f"[Enricher] No HTML from {website}")
         return lead
+    lead["_site_reachable"] = True
 
     contacts = extract_contacts_from_html(raw_html, base_url=website)
+    emails = list(contacts["emails"])
+    phones = list(contacts["phone_numbers"])
+    contact_links = [u.strip() for u in contacts["contact_page_links"].split(",") if u.strip()]
+    same_site_links = [u for u in contact_links if domain and domain in u.lower()]
 
-    # Set the first email found (if any)
-    if contacts["emails"]:
-        lead["contact_email"] = contacts["emails"][0]
-        logger.info(f"[Enricher] ✓ Email found: {contacts['emails'][0]} ({domain})")
+    email = pick_business_email(emails, domain)
+    if not email and same_site_links:
+        contact_html = fetch_website_html(same_site_links[0])
+        if contact_html:
+            extra = extract_contacts_from_html(contact_html, base_url=same_site_links[0])
+            emails += extra["emails"]
+            phones += extra["phone_numbers"]
+            email = pick_business_email(emails, domain)
 
-    # Set the first phone found (if any)
-    if contacts["phone_numbers"]:
-        lead["contact_phone"] = contacts["phone_numbers"][0]
-        logger.info(f"[Enricher] ✓ Phone found: {contacts['phone_numbers'][0]} ({domain})")
+    lead["contact_email"] = email
+    lead["contact_phone"] = phones[0] if phones else ""
+    lead["has_contact_form"] = bool(same_site_links)
 
-    # Store contact page link if found
-    if contacts["contact_page_links"]:
-        lead["has_contact_form"] = True
+    page = _page_summary(raw_html)
+    lead["_page_title"] = page["title"]
+    lead["_relevance_hits"] = sum(1 for s in RELEVANCE_SIGNALS if s in page["text"])
+    lead["lead_type"] = classify_lead_type(
+        f"{lead.get('company_name', '')} {page['title']}",
+        f"{lead.get('description', '')} {page['description']}",
+    )
 
-    # Log if nothing found
-    if not contacts["emails"] and not contacts["phone_numbers"]:
-        logger.info(f"[Enricher] ✗ No email or phone found on {domain}")
-
+    logger.info(
+        f"[Enricher] {domain}: email={email or '-'} form={lead['has_contact_form']} "
+        f"type={lead['lead_type']} relevance={lead['_relevance_hits']}"
+    )
     return lead
 
 
 def score_lead(lead: dict) -> dict:
-    """
-    Score a lead using rule-based scoring.
-    Called after enrichment, before DB insert.
-    """
-    score = 30  # base score
+    """Rule-based score used by the quality gate. Called after enrichment, before insert."""
+    score = 30
     reasons = []
 
-    # Lead type scoring
     type_scores = {
-        "cnc_turning_job_work_buyer": 30, "precision_turned_component_buyer": 25,
-        "screw_nut_sleeve_manufacturer": 25, "pump_valve_manufacturer": 20,
-        "automotive_component_manufacturer": 20, "electrical_equipment_manufacturer": 15,
-        "hydraulic_pneumatic_manufacturer": 15, "general_engineering": 10, "other": 0,
+        "pump_valve_manufacturer": 25, "process_equipment_manufacturer": 25,
+        "hydraulic_pneumatic_manufacturer": 25, "automotive_component_manufacturer": 20,
+        "machinery_equipment_manufacturer": 20, "compressor_blower_manufacturer": 20,
+        "electrical_equipment_manufacturer": 15, "general_engineering": 10, "other": 0,
     }
     type_bonus = type_scores.get(lead.get("lead_type", "other"), 0)
     score += type_bonus
-    if type_bonus > 0:
-        reasons.append(f"Relevant type: {lead['lead_type']}")
+    if type_bonus:
+        reasons.append(f"Target industry: {lead['lead_type']}")
 
-    # Has email = better
-    if lead.get("contact_email"):
+    email = lead.get("contact_email") or ""
+    if email:
+        score += 15
+        reasons.append("Business email on company domain")
+        if email.split("@")[0].startswith(("sales", "purchase", "procurement")):
+            score += 5
+            reasons.append("Sales/purchase inbox")
+
+    if lead.get("has_contact_form"):
         score += 10
-        reasons.append("Has email")
+        reasons.append("Contact form")
 
-    # Has phone = better
     if lead.get("contact_phone"):
         score += 5
-        reasons.append("Has phone")
+        reasons.append("Phone listed")
 
-    # Decision-maker title
+    if lead.get("_relevance_hits", 0) >= 4:
+        score += 5
+        reasons.append("Strong manufacturing signals on site")
+
     title = (lead.get("contact_title") or "").lower()
-    if any(t in title for t in ["ceo", "cto", "vp", "director", "head", "manager"]):
+    if any(t in title for t in ["ceo", "director", "head", "manager", "purchase", "procurement"]):
         score += 10
         reasons.append("Decision-maker contact")
 
-    # Country priority
-    high_priority = ["India", "UAE", "US", "Germany", "Saudi Arabia", "Singapore"]
-    if lead.get("country") in high_priority:
+    if lead.get("country") in ["India", "UAE", "US", "Germany", "Saudi Arabia", "Singapore"]:
         score += 10
         reasons.append(f"Priority country: {lead['country']}")
 
-    # Has website
-    if lead.get("website_url"):
-        score += 5
-
-    score = max(0, min(100, score))
-    lead["score"] = score
+    lead["score"] = max(0, min(100, score))
     lead["score_reason"] = "; ".join(reasons) if reasons else "Base score"
-
-    logger.info(f"[Enricher] Score: {score} for {lead.get('company_domain', '?')} ({'; '.join(reasons)})")
     return lead
 
 
-def enrich_leads(leads: list[dict], insert_immediately: bool = True) -> list[dict]:
+def enrich_leads(leads: list[dict], insert_immediately: bool = True, max_keep: int = None) -> list[dict]:
     """
-    Enrich a batch of leads. Only keeps leads that have at least
-    one email OR one phone number after website extraction.
-    Scores each lead and inserts into Supabase immediately (one by one).
+    Enrich, score, and quality-gate a batch of leads. Only leads passing
+    assess_lead_quality are kept (and inserted immediately when requested).
+    Stops once max_keep leads have been kept.
     """
     if not leads:
         return []
@@ -387,62 +496,38 @@ def enrich_leads(leads: list[dict], insert_immediately: bool = True) -> list[dic
 
     logger.info(f"[Enricher] Starting enrichment for {len(leads)} leads...")
 
-    enriched = []
-    skipped = 0
-    inserted = 0
+    kept = []
+    rejected = {}
 
     for i, lead in enumerate(leads, 1):
+        if max_keep is not None and len(kept) >= max_keep:
+            break
         domain = lead.get("company_domain", "?")
-        logger.info(f"[Enricher] [{i}/{len(leads)}] Enriching: {domain}")
 
-        # Check if already in DB (skip duplicates early)
         if domain_exists(domain):
-            skipped += 1
-            logger.info(f"[Enricher] [{i}/{len(leads)}] ⊘ DUPLICATE {domain} — already in DB")
+            rejected["duplicate"] = rejected.get("duplicate", 0) + 1
             continue
 
-        enriched_lead = enrich_lead(lead)
+        lead = score_lead(enrich_lead(lead))
+        passes, reason = assess_lead_quality(lead)
+        if not passes:
+            rejected[reason] = rejected.get(reason, 0) + 1
+            logger.info(f"[Enricher] [{i}/{len(leads)}] ✗ REJECTED {domain} — {reason}")
+            continue
 
-        has_email = bool(enriched_lead.get("contact_email"))
-        has_phone = bool(enriched_lead.get("contact_phone"))
+        record = {k: v for k, v in lead.items() if not k.startswith("_") and k != "description"}
+        if insert_immediately:
+            result = insert_lead(record)
+            if not result:
+                rejected["duplicate"] = rejected.get("duplicate", 0) + 1
+                continue
+            if isinstance(result, dict) and "id" in result:
+                record["id"] = result["id"]
+        kept.append(record)
+        logger.info(
+            f"[Enricher] [{i}/{len(leads)}] ✓ KEPT {domain} (score {record['score']}, "
+            f"email: {record.get('contact_email') or '-'}, form: {record.get('has_contact_form')})"
+        )
 
-        if has_email or has_phone:
-            # Score the lead
-            enriched_lead = score_lead(enriched_lead)
-            enriched.append(enriched_lead)
-
-            # Insert into Supabase immediately
-            if insert_immediately:
-                result = insert_lead(enriched_lead)
-                if result:
-                    inserted += 1
-                    # Store the DB-assigned ID back on the lead
-                    if isinstance(result, dict) and "id" in result:
-                        enriched_lead["id"] = result["id"]
-                    logger.info(
-                        f"[Enricher] [{i}/{len(leads)}] ✓ SAVED {domain} → Supabase "
-                        f"(email: {enriched_lead.get('contact_email','')}, "
-                        f"phone: {enriched_lead.get('contact_phone','')}, "
-                        f"score: {enriched_lead['score']})"
-                    )
-                    # Email worker will pick this up from DB automatically
-                    # (no in-memory queue — email worker polls for New leads)
-                else:
-                    logger.info(f"[Enricher] [{i}/{len(leads)}] ⊘ DUPLICATE {domain} (DB conflict)")
-            else:
-                logger.info(
-                    f"[Enricher] [{i}/{len(leads)}] ✓ KEPT {domain} "
-                    f"(email: {has_email}, phone: {has_phone}, score: {enriched_lead['score']})"
-                )
-        else:
-            skipped += 1
-            logger.info(
-                f"[Enricher] [{i}/{len(leads)}] ✗ SKIPPED {domain} "
-                f"(no email or phone on website)"
-            )
-
-    logger.info(
-        f"[Enricher] Done: {inserted} saved to DB, {skipped} skipped "
-        f"(from {len(leads)} total)"
-    )
-    return enriched
+    logger.info(f"[Enricher] Done: kept {len(kept)} of {len(leads)} — rejected: {rejected}")
+    return kept

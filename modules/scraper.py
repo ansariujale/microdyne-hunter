@@ -125,31 +125,36 @@ def clean_lead(raw: dict, source: str, keyword: str = "", country: str = "") -> 
         "lead_type": lead_type,
         "source": source,
         "keyword_used": keyword,
+        "description": raw.get("description", ""),
         "has_contact_form": False,
         "score": 0,
+        "sequence_stage": 0,
+        "excluded": False,
+        "email_sent": False,
+        "form_filled": False,
+        "form_submission_status": "pending",
     }
 
 
+# Ordered: first match wins, so more specific seal/turned-part consumers come first.
+LEAD_TYPE_RULES = [
+    ("process_equipment_manufacturer", ["agitator", "mixer", "reactor", "process equipment", "pressure vessel", "heat exchanger"]),
+    ("pump_valve_manufacturer", ["pump", "valve", "impeller"]),
+    ("compressor_blower_manufacturer", ["compressor", "blower", "vacuum system"]),
+    ("hydraulic_pneumatic_manufacturer", ["hydraulic", "pneumatic", "cylinder"]),
+    ("automotive_component_manufacturer", ["automotive", "auto component", "auto parts", "tractor parts", "two wheeler"]),
+    ("electrical_equipment_manufacturer", ["electric motor", "switchgear", "transformer", "electrical equipment", "motors"]),
+    ("machinery_equipment_manufacturer", ["machinery", "machine manufacturer", "packaging machine", "special purpose machine",
+                                          "conveyor", "gearbox", "gear box", "textile machine", "agricultural machine"]),
+    ("general_engineering", ["engineering", "fabrication", "manufacturer", "manufacturing", "industries", "industrial"]),
+]
+
+
 def classify_lead_type(company_name: str, description: str = "") -> str:
-    text = (company_name + " " + description).lower()
-    if any(k in text for k in ["cnc turning", "job work", "turned components", "turned parts", "subcontract machining"]):
-        return "cnc_turning_job_work_buyer"
-    if any(k in text for k in ["precision turning", "turned component", "brass turned", "custom machined"]):
-        return "precision_turned_component_buyer"
-    if any(k in text for k in ["screw", "nut", "bolt", "sleeve", "bushing", "fastener"]):
-        return "screw_nut_sleeve_manufacturer"
-    if any(k in text for k in ["pump", "valve", "impeller", "centrifugal"]):
-        return "pump_valve_manufacturer"
-    if any(k in text for k in ["automotive", "auto component", "auto parts", "vehicle"]):
-        return "automotive_component_manufacturer"
-    if any(k in text for k in ["electrical", "electronic", "switchgear", "panel"]):
-        return "electrical_equipment_manufacturer"
-    if any(k in text for k in ["hydraulic", "pneumatic", "cylinder", "fitting"]):
-        return "hydraulic_pneumatic_manufacturer"
-    if any(k in text for k in ["engineering", "machining", "cnc", "precision", "fabrication"]):
-        return "general_engineering"
-    if any(k in text for k in ["manufacturing", "industrial", "plant", "factory"]):
-        return "general_engineering"
+    text = f"{company_name} {description}".lower()
+    for lead_type, needles in LEAD_TYPE_RULES:
+        if any(n in text for n in needles):
+            return lead_type
     return "other"
 
 
@@ -273,7 +278,7 @@ def scrape_apollo(country: str, page: int = 1, per_page: int = 100) -> list[dict
         "person_titles": APOLLO_JOB_TITLES,
         "person_locations": [country],
         "organization_num_employees_ranges": ["1,10000"],
-        "q_keywords": "mechanical seal OR CNC machining OR precision components OR industrial pump OR rotating equipment",
+        "q_keywords": "pump OR valve OR hydraulic cylinder OR compressor OR gearbox OR machinery OR auto components",
     }
 
     try:
@@ -410,41 +415,22 @@ def scrape_google_search(keyword: str, country: str, num_results: int = 50) -> l
 # MASTER SCRAPE ORCHESTRATOR
 # ═══════════════════════════════════════════════════════════════
 
-# CNC turning job-work & mechanical seal search queries for Google Maps
-MAPS_SEARCH_QUERIES = [
-    "CNC turning job work",
-    "CNC turned components manufacturer",
-    "precision turning subcontractor",
-    "screw machining job work",
-    "turned parts manufacturer",
-    "mechanical seal manufacturer",
-    "pump and valve manufacturer",
-    "automotive component manufacturer",
-    "electrical equipment manufacturer",
-    "general engineering works",
-]
-
-
 def run_daily_scrape() -> list[dict]:
     """
-    Run the full scraping pipeline.
+    Extract up to DAILY_LEAD_TARGET quality-gated leads using the preserved keyword set.
     PRIMARY: Apify Google Maps (compass/crawler-google-places)
     SECONDARY: Apollo.io, DuckDuckGo/Bing search
-    Leads are inserted into Supabase immediately per-country.
+    Leads are inserted into Supabase immediately as they pass the quality gate.
     """
-    from modules.database import bulk_insert_leads
-
     all_leads = []
     inserted_leads: list[dict] = []
     total_inserted = 0
     total_skipped = 0
     import config
-    target = int(getattr(config, "DAILY_LEAD_TARGET", 1000) or 1000)
-    target_countries = list(getattr(config, "TARGET_COUNTRIES", []) or [])
-    search_keywords = list(getattr(config, "SEARCH_KEYWORDS", []) or [])
+    target = int(getattr(config, "DAILY_LEAD_TARGET", 50) or 50)
 
     from modules.database import get_leads_added_in_business_day
-    already_today = get_leads_added_in_business_day(reset_hour_local=11)
+    already_today = get_leads_added_in_business_day(reset_hour_local=getattr(config, "BUSINESS_DAY_RESET_HOUR", 11))
     if already_today >= target:
         logger.info(f"=== Skipping scrape: already have {already_today}/{target} leads for current day ===")
         return []
@@ -472,43 +458,40 @@ def run_daily_scrape() -> list[dict]:
 
         remaining = remaining_target - total_inserted
         country_leads = []
+        # Raw candidates are gathered generously because most fail the quality gate.
+        candidate_goal = remaining * 4
 
         # ── PRIMARY: Google Maps via Apify ──────────────────
         if _apify_available():
-            for query in MAPS_SEARCH_QUERIES:
-                if len(country_leads) >= remaining:
+            for keyword in search_keywords:
+                if len(country_leads) >= candidate_goal:
                     break
-
+                query = config.normalize_keyword(keyword)
                 logger.info(f"[{country}] Apify Maps: '{query}'")
                 maps_leads = scrape_google_maps_apify(query, country, max_places=30)
                 country_leads.extend(maps_leads)
                 update_source_tracker("google_maps", f"{query} {country}", country, new_found=len(maps_leads))
-
-                if maps_leads:
-                    logger.info(f"[{country}] Got {len(maps_leads)} leads from '{query}'")
-
                 time.sleep(SCRAPE_DELAY_SECONDS)
 
         # ── SECONDARY: Apollo.io ────────────────────────────
-        if len(country_leads) < remaining:
+        if len(country_leads) < candidate_goal:
             apollo_leads = scrape_apollo(country)
             country_leads.extend(apollo_leads)
             update_source_tracker("apollo", f"apollo_{country}", country, new_found=len(apollo_leads))
 
         # ── TERTIARY: DuckDuckGo/Bing search ────────────────
-        if len(country_leads) < remaining:
-            for kw_template in search_keywords[:3]:  # limit to first 3 keywords
-                if len(country_leads) >= remaining:
+        if len(country_leads) < candidate_goal:
+            for keyword in search_keywords:
+                if len(country_leads) >= candidate_goal:
                     break
-                keyword = kw_template.format(country=country)
-                search_leads = scrape_google_search(keyword, country, num_results=20)
+                query = f"{config.normalize_keyword(keyword)} {country}"
+                search_leads = scrape_google_search(query, country, num_results=20)
                 country_leads.extend(search_leads)
-                update_source_tracker("google_search", keyword, country, new_found=len(search_leads))
+                update_source_tracker("google_search", query, country, new_found=len(search_leads))
                 time.sleep(SCRAPE_DELAY_SECONDS)
 
-        # ── ENRICH + INSERT INTO SUPABASE ───────────────────
+        # ── ENRICH + QUALITY GATE + INSERT ──────────────────
         if country_leads and total_inserted < remaining_target:
-            # Deduplicate within this batch
             seen = set()
             unique_batch = []
             for lead in country_leads:
@@ -517,12 +500,9 @@ def run_daily_scrape() -> list[dict]:
                     seen.add(d)
                     unique_batch.append(lead)
 
-            # Enrich: fetch website → extract email & phone → score → insert into DB
-            # Each lead is inserted immediately after enrichment (no batching)
-            # Only leads with email or phone from the website are kept
             from modules.enricher import enrich_leads
-            logger.info(f"[{country}] Enriching {len(unique_batch)} leads (fetching websites + inserting)...")
-            enriched_batch = enrich_leads(unique_batch, insert_immediately=True) or []
+            logger.info(f"[{country}] Quality-checking {len(unique_batch)} candidates (need {remaining})...")
+            enriched_batch = enrich_leads(unique_batch, insert_immediately=True, max_keep=remaining) or []
             if enriched_batch:
                 inserted_leads.extend(enriched_batch)
             total_inserted += len(enriched_batch)

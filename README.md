@@ -1,6 +1,6 @@
 # MicrodyneHunter v2 — AI Sales Agent for Microdyne Engineering
 
-AI-powered sales agent that scrapes 1,000 leads/day, sends personalized cold emails, fills website contact forms, and auto-optimizes targeting based on what converts.
+AI-powered sales agent that finds top-quality manufacturer leads, emails them (max 10/day), submits their website contact forms (max 100/day), and only extracts new leads once every existing lead has been contacted.
 
 ## Architecture
 
@@ -103,13 +103,29 @@ Per domain setup:
 
 ## Daily Workflow
 
-1. **SCRAPE** — Find 1,000 new unique leads (Apollo, Google, Maps, directories)
-2. **QUALIFY** — AI scores each lead 0-100, tags with metadata
-3. **STORE** — Save to Supabase with 7-dimension dedup check
-4. **EMAIL** — Send 1,000 personalized cold emails via Instantly
-5. **FORM FILL** — Submit 1,000 website contact forms via Playwright
-6. **FOLLOW UP** — 4-email sequence over 14 days for non-responders
-7. **HAND OFF** — Hot leads notify the team instantly
+The server runs one cycle automatically every day after 11:05 (local time), or on demand with **Start Agent**.
+
+1. **QUEUE CHECK** — If any lead is still un-emailed or its contact form un-submitted, extraction is skipped and the cycle continues with those leads.
+2. **EXTRACT** — Only when both queues are empty: search the preserved keyword set, and store up to `DAILY_LEAD_TARGET` (default 50) leads that pass the quality gate.
+3. **EMAIL** — Send to the oldest un-emailed leads. **Hard cap: 10 per day.**
+4. **FORMS** — Submit contact forms on un-submitted leads. **Hard cap: 100 successful submissions per day.**
+5. **SUMMARY** — Today's usage and what's still queued are shown on the dashboard's *Today's outreach* panel.
+
+The caps are enforced inside the send functions themselves, so dashboard buttons, the CLI, and follow-ups all share the same daily limit. Daily limits reset at 11:00 local time. Environment variables can lower the caps (`DAILY_EMAIL_LIMIT`, `DAILY_FORM_LIMIT`) but never raise them. Set `AUTO_DAILY_RUN=false` to disable the automatic run.
+
+### Lead quality gate
+
+A lead is stored only if all of these hold:
+
+- Its website loads and isn't a directory/marketplace (IndiaMART, JustDial, TradeIndia, …)
+- It isn't another CNC job shop (competitor)
+- The site shows real manufacturing signals
+- It has a business email on its own domain (not gmail/yahoo, not careers@/noreply@) **or** a contact page
+- It belongs to a target industry and scores at least `MIN_QUALIFY_SCORE` (default 60)
+
+### Preserved keyword set
+
+`BEST_SEARCH_KEYWORDS` in `config.py` is always searched and can't be removed from the admin panel. It targets **buyers** of turned parts and mechanical seals (pump, valve, hydraulic cylinder, gearbox, compressor, motor, agitator, machinery manufacturers) rather than other job shops. Extra keywords added in the admin panel are searched after it.
 
 ## Lead Scoring Logic
 
@@ -120,15 +136,16 @@ Leads are scored using a **dual-mode system**: AI-based scoring when an API key 
 | Factor | Points | Details |
 |--------|--------|---------|
 | **Base score** | 30 | Every lead starts here |
-| **Lead type: CNC Turning Job Work Buyer** | +30 | Highest value target |
-| **Lead type: Precision Turned Components / Screw-Nut-Sleeve Mfr** | +25 | Strong fit for turning job work |
-| **Lead type: Pump/Valve / Automotive Component Mfr** | +20 | Good potential buyers |
-| **Lead type: Electrical Equipment / Hydraulic-Pneumatic Mfr** | +15 | Likely to need turned components |
-| **Has email** | +10 | Contactable lead |
-| **Decision-maker title** | +10 | Procurement Manager, Production Manager, Plant Manager |
+| **Pump/Valve, Process Equipment, Hydraulic/Pneumatic Mfr** | +25 | Heavy users of turned parts and seals |
+| **Automotive Component, Machinery, Compressor/Blower Mfr** | +20 | Good potential buyers |
+| **Electrical Equipment Mfr** | +15 | Motors, switchgear — turned components |
+| **General Engineering** | +10 | Broad fit |
+| **Business email on own domain** | +15 | +5 more for sales@/purchase@ inboxes |
+| **Contact form** | +10 | Can be form-filled |
+| **Decision-maker title** | +10 | Procurement, Purchase, Plant Manager |
 | **Priority country** | +10 | India, UAE, US, Germany, Saudi Arabia, Singapore |
-| **Has website** | +5 | Can be form-filled |
-| **Has phone** | +5 | Additional contact channel |
+| **Phone listed** | +5 | Additional contact channel |
+| **Strong manufacturing signals** | +5 | Many industry terms on the website |
 
 **Max possible score: 100** (capped)
 
@@ -136,10 +153,9 @@ Leads are scored using a **dual-mode system**: AI-based scoring when an API key 
 
 | Score Range | Action |
 |-------------|--------|
-| **< 20** | Auto-skipped |
-| **20-39** | Low quality, skipped |
-| **40-69** | Qualified for outreach |
-| **70+** | High priority, fast-tracked |
+| **< 60** | Not stored |
+| **60-79** | Stored and contacted |
+| **80+** | High priority |
 
 ### AI-Based Scoring (Primary)
 

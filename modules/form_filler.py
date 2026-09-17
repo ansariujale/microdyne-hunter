@@ -10,6 +10,7 @@ import random
 import time
 import logging
 import asyncio
+import threading
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -1070,17 +1071,39 @@ async def process_lead_form(browser: Browser, lead: dict) -> dict:
         await context.close()
 
 
+# Held around check→submit of each form so concurrent runs can't overshoot the daily cap.
+_daily_form_lock = threading.Lock()
+
+
+def get_form_quota_remaining() -> int:
+    """Remaining successful submissions allowed today. Raises if the count can't be verified."""
+    import config
+    from modules.database import get_forms_submitted_today
+    limit = int(getattr(config, "DAILY_FORM_LIMIT", 100))
+    return max(0, limit - get_forms_submitted_today(strict=True))
+
+
+def _release_unprocessed(leads: list[dict]) -> None:
+    """Put leads that were claimed for this batch but never attempted back in the queue."""
+    from modules.database import db
+    for lead in leads:
+        try:
+            db.update("leads", {"form_submission_status": "pending"},
+                      {"id": f"eq.{lead['id']}", "form_submission_status": "eq.processing"})
+        except Exception:
+            pass
+
+
 async def run_form_filling(leads: list[dict], max_concurrent: int = 3) -> dict:
     """
-    Run form filling for a batch of leads.
+    Run form filling for a batch of leads, one site at a time, never exceeding
+    today's DAILY_FORM_LIMIT successful submissions.
     Each website gets 2 minutes AFTER page loads. Timer starts after load, not before.
     Uses separate browser per lead to prevent hanging.
-    Moves to next immediately after completion — no waiting.
     """
     from modules.form_outreach import outreach_state
-    import signal
 
-    stats = {"total": len(leads), "success": 0, "no_form": 0, "failed": 0, "results": []}
+    stats = {"total": len(leads), "success": 0, "no_form": 0, "failed": 0, "results": [], "stopped_reason": None}
 
     for i, lead in enumerate(leads):
         # Check stop flag before each form
@@ -1088,89 +1111,92 @@ async def run_form_filling(leads: list[dict], max_concurrent: int = 3) -> dict:
             logger.info(f"Form filling stopped at {i}/{len(leads)}")
             break
 
-        # Update current lead for dashboard
-        company = lead.get("company_name") or lead.get("website_url") or "?"
-        outreach_state["current_lead"] = company
-        logger.info(f"[Form {i+1}/{len(leads)}] Starting: {company}")
-
-        result = None
+        _daily_form_lock.acquire()
         try:
-            # Launch a FRESH browser for each lead — prevents hanging between sites
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=['--no-sandbox', '--disable-dev-shm-usage']
-                )
-
-                try:
-                    # asyncio.wait_for with 150s total (30s for page load + 120s for form fill)
-                    result = await asyncio.wait_for(
-                        process_lead_form(browser, lead),
-                        timeout=150  # 2.5 min total including page load
-                    )
-                except asyncio.TimeoutError:
-                    result = {"success": False, "error_message": "Timed out — site too slow or form not found"}
-                    logger.warning(f"[Form] Timeout: {company}")
-                    try:
-                        update_lead(lead["id"], {
-                            "form_submission_status": "failed",
-                            "form_error_message": "Timed out — site too slow",
-                            "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
-                        })
-                    except:
-                        pass
-                finally:
-                    # Force close browser — this kills any hanging page
-                    try:
-                        await browser.close()
-                    except:
-                        pass
-
-        except asyncio.CancelledError:
-            logger.info(f"[Form] Cancelled: {company}")
-            break
+            remaining = get_form_quota_remaining()
         except Exception as e:
-            result = {"success": False, "error_message": str(e)[:200]}
-            logger.error(f"[Form] Error: {company} — {e}")
-            try:
-                update_lead(lead["id"], {
-                    "form_submission_status": "failed",
-                    "form_error_message": str(e)[:200],
-                    "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
-                })
-            except:
-                pass
+            _daily_form_lock.release()
+            logger.error(f"[Form] Could not verify today's submission count — stopping: {e}")
+            stats["stopped_reason"] = "quota_check_failed"
+            _release_unprocessed(leads[i:])
+            break
+        if remaining <= 0:
+            _daily_form_lock.release()
+            logger.info(f"[Form] Daily form limit reached — stopping at {i}/{len(leads)}")
+            stats["stopped_reason"] = "daily_form_limit_reached"
+            _release_unprocessed(leads[i:])
+            break
 
-        if isinstance(result, Exception):
-            stats["failed"] += 1
-            stats["results"].append({"success": False, "error_message": str(result)[:200]})
-        elif result and result.get("success"):
-            stats["success"] += 1
-            stats["results"].append(result)
-        elif result and result.get("reason") == "no_form":
-            stats["no_form"] += 1
-            stats["results"].append(result)
-        elif result:
-            stats["failed"] += 1
-            stats["results"].append(result)
-
-        # Update outreach state live for dashboard
-        outreach_state["total_processed"] = stats["success"] + stats["failed"] + stats["no_form"]
-        outreach_state["success"] = stats["success"]
-        outreach_state["failed"] = stats["failed"]
-        outreach_state["no_form"] = stats["no_form"]
+        try:
+            await _fill_one_lead(lead, i, len(leads), stats, outreach_state)
+        finally:
+            _daily_form_lock.release()
 
         # Brief pause between forms
         await asyncio.sleep(1)
 
-        try:
-            await browser.close()
-        except:
-            pass
-
     logger.info(f"Form filling complete: total={stats['total']}, success={stats['success']}, "
                 f"no_form={stats['no_form']}, failed={stats['failed']}")
     return stats
+
+
+async def _fill_one_lead(lead: dict, i: int, total: int, stats: dict, outreach_state: dict) -> None:
+    """Fill one lead's contact form and update stats. Each lead gets a fresh browser."""
+    company = lead.get("company_name") or lead.get("website_url") or "?"
+    outreach_state["current_lead"] = company
+    logger.info(f"[Form {i+1}/{total}] Starting: {company}")
+
+    result = None
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-dev-shm-usage']
+            )
+            try:
+                # 150s total: ~30s page load + 120s form fill
+                result = await asyncio.wait_for(process_lead_form(browser, lead), timeout=150)
+            except asyncio.TimeoutError:
+                result = {"success": False, "error_message": "Timed out — site too slow or form not found"}
+                logger.warning(f"[Form] Timeout: {company}")
+                try:
+                    update_lead(lead["id"], {
+                        "form_submission_status": "failed",
+                        "form_error_message": "Timed out — site too slow",
+                        "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                except Exception:
+                    pass
+            finally:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
+    except Exception as e:
+        result = {"success": False, "error_message": str(e)[:200]}
+        logger.error(f"[Form] Error: {company} — {e}")
+        try:
+            update_lead(lead["id"], {
+                "form_submission_status": "failed",
+                "form_error_message": str(e)[:200],
+                "form_last_attempted_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+
+    if result and result.get("success"):
+        stats["success"] += 1
+    elif result and result.get("reason") == "no_form":
+        stats["no_form"] += 1
+    elif result:
+        stats["failed"] += 1
+    if result:
+        stats["results"].append(result)
+
+    outreach_state["total_processed"] = stats["success"] + stats["failed"] + stats["no_form"]
+    outreach_state["success"] = stats["success"]
+    outreach_state["failed"] = stats["failed"]
+    outreach_state["no_form"] = stats["no_form"]
 
 
 def fill_forms_sync(leads: list[dict], max_concurrent: int = 3) -> dict:

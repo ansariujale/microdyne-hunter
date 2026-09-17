@@ -349,6 +349,19 @@ def _trim_pending_email_queue(keep: int = 40):
         return {"kept": 0, "excluded": 0, "error": str(e)}
 
 
+def _extra_keywords(raw) -> list[str]:
+    """Admin-added keywords only — the preserved best set lives in config and is always merged in."""
+    import config
+    items = raw if isinstance(raw, list) else str(raw or "").split(",")
+    best = {k.lower() for k in config.BEST_SEARCH_KEYWORDS}
+    extras = []
+    for item in items:
+        kw = config.normalize_keyword(item)
+        if kw and kw.lower() not in best and kw.lower() not in {e.lower() for e in extras}:
+            extras.append(kw)
+    return extras
+
+
 # ═══════════════════════════════════════════════════════════════
 # PIPELINE RUNNER (runs in background thread)
 # ═══════════════════════════════════════════════════════════════
@@ -431,32 +444,6 @@ def run_step_thread(step_name):
     agent_state["last_run"] = datetime.now(timezone.utc).isoformat()
 
 
-def run_full_pipeline_thread():
-    """Run the complete pipeline in sequence."""
-    agent_state["pipeline_running"] = True
-    agent_state["status"] = "running"
-    add_log("🚀 Starting full pipeline...")
-
-    steps = ["scrape", "qualify", "store", "email", "forms", "followup"]
-    for step in steps:
-        if not agent_state["pipeline_running"]:
-            add_log("⏹ Pipeline stopped by user")
-            break
-        agent_state["current_step"] = step
-        add_log(f"▶ Pipeline step: {step}")
-        run_step_thread.__wrapped__(step) if hasattr(run_step_thread, '__wrapped__') else _run_step_sync(step)
-
-    # Weekly report on Sundays
-    if datetime.now(timezone.utc).strftime("%A").lower() == "sunday":
-        add_log("▶ Sunday — generating weekly report")
-        _run_step_sync("report")
-
-    agent_state["pipeline_running"] = False
-    agent_state["status"] = "idle"
-    agent_state["current_step"] = None
-    agent_state["last_run"] = datetime.now(timezone.utc).isoformat()
-    add_log("✅ Full pipeline complete!")
-
 
 def _run_step_sync(step_name):
     """Run a step synchronously (used within the pipeline thread)."""
@@ -515,352 +502,283 @@ def _run_step_sync(step_name):
 # CONTINUOUS AGENT LOOP (runs forever until stopped)
 # ═══════════════════════════════════════════════════════════════
 
-def agent_loop_thread():
+_cycle_start_lock = threading.Lock()
+
+_EMAIL_STOP_REASONS = (
+    "daily_email_limit_reached", "quota_check_failed", "sender_capacity_ended",
+    "all_senders_at_capacity", "no_sending_method_configured",
+)
+
+
+def start_daily_cycle(trigger: str = "manual") -> bool:
+    """Start one daily cycle in the background. Returns False if one is already running."""
+    with _cycle_start_lock:
+        if agent_state["agent_loop_running"]:
+            return False
+        agent_state["agent_loop_running"] = True
+    threading.Thread(target=agent_loop_thread, args=(trigger,), daemon=True, name="daily-cycle").start()
+    return True
+
+
+def _email_sending_configured() -> bool:
+    import config
+    from modules.email_queue import _using_smtp
+    instantly_key = (getattr(config, "INSTANTLY_API_KEY", "") or "").strip()
+    return _using_smtp() or bool(instantly_key and "your" not in instantly_key.lower())
+
+
+def _run_email_phase(keep_running=None):
+    """Email the oldest un-emailed leads without exceeding today's DAILY_EMAIL_LIMIT."""
+    keep_running = keep_running or (lambda: agent_state["agent_loop_running"])
+    import config
+    from modules.database import get_leads_for_email, get_pending_email_count, get_emails_sent_today
+    from modules.email_queue import process_lead_email, get_email_quota_remaining
+
+    limit = int(config.DAILY_EMAIL_LIMIT)
+    if not _email_sending_configured():
+        add_log("⚠ Email skipped — no SMTP or Instantly account configured (Admin Panel → Email & SMTP)",
+                "warning", category="email")
+        return
+    try:
+        remaining = get_email_quota_remaining()
+    except Exception as e:
+        add_log(f"⚠ Email skipped — couldn't verify today's send count: {e}", "warning", category="email")
+        return
+    if remaining <= 0:
+        add_log(f"⏸ Daily email limit reached ({limit}/{limit}) — remaining leads will be emailed next day",
+                category="email")
+        return
+
+    pending = get_pending_email_count()
+    leads = get_leads_for_email(limit=remaining * 3)  # extra room for leads skipped as invalid
+    if not leads:
+        add_log("✓ No un-emailed leads left", category="email")
+        return
+    add_log(f"▶ Emailing up to {remaining} of {pending} un-emailed leads (limit {limit}/day)", category="email")
+
+    sent = 0
+    consecutive_failures = 0
+    for lead in leads:
+        if not keep_running():
+            break
+        address = lead.get("contact_email", "?")
+        success, reason = process_lead_email(lead, sequence_stage=1, return_reason=True)
+        if reason == "sent":
+            sent += 1
+            consecutive_failures = 0
+            add_log(f"  ✓ Email sent → {lead.get('company_name', '?')} ({address})", category="email")
+            delay_min, delay_max = getattr(config, "EMAIL_SEND_DELAY", (2, 8))
+            time.sleep(random.uniform(float(delay_min), float(delay_max)))
+            continue
+        if reason in _EMAIL_STOP_REASONS:
+            add_log(f"⏸ Email phase stopped — {reason.replace('_', ' ')}", category="email")
+            break
+        add_log(f"  ⚠ Skipped {address} — {reason}", "warning", category="email")
+        if reason.startswith("send_failed") or reason == "processing_error":
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                add_log("✗ 3 sends failed in a row — stopping so the lead queue isn't used up. "
+                        "Check the SMTP credentials in the Admin Panel.", "error", category="email")
+                break
+
+    sent_today = get_emails_sent_today()
+    agent_state["stats"]["emails_sent"] = sent_today
+    add_log(f"✓ Email phase done — {sent} sent this run, {sent_today}/{limit} today, "
+            f"{get_pending_email_count()} leads still to email", category="email")
+
+
+def _run_form_phase(keep_running=None):
+    """Submit contact forms on un-submitted leads without exceeding today's DAILY_FORM_LIMIT."""
+    keep_running = keep_running or (lambda: agent_state["agent_loop_running"])
+    import config
+    from modules.database import get_pending_form_count, get_forms_submitted_today
+    from modules.form_outreach import run_form_outreach, outreach_state
+    from modules.form_filler import get_form_quota_remaining
+
+    limit = int(config.DAILY_FORM_LIMIT)
+    if outreach_state.get("running"):
+        add_log("⚠ A form batch is already running from the Forms page — skipping form phase this cycle",
+                "warning", category="form")
+        return
+
+    last_pending = None
+    while keep_running():
+        try:
+            remaining = get_form_quota_remaining()
+        except Exception as e:
+            add_log(f"⚠ Form phase stopped — couldn't verify today's submission count: {e}", "warning", category="form")
+            return
+        if remaining <= 0:
+            add_log(f"⏸ Daily form limit reached ({limit}/{limit}) — remaining leads continue next day", category="form")
+            break
+        pending = get_pending_form_count()
+        if pending <= 0:
+            add_log("✓ No un-submitted forms left", category="form")
+            break
+        if pending == last_pending:
+            add_log("⚠ Form queue isn't shrinking — stopping form phase for this cycle", "warning", category="form")
+            break
+        last_pending = pending
+
+        batch = min(remaining, pending, 10)
+        add_log(f"  Form batch: {batch} sites ({remaining} submissions left today, {pending} in queue)", category="form")
+        result = run_form_outreach(batch_size=batch) or {}
+        if result.get("error"):
+            add_log(f"⚠ Form batch error: {result['error']}", "error", category="form")
+            break
+        agent_state["stats"]["forms_filled"] = get_forms_submitted_today()
+
+    add_log(f"✓ Form phase done — {get_forms_submitted_today()}/{limit} submitted today, "
+            f"{get_pending_form_count()} forms still pending", category="form")
+
+
+def agent_loop_thread(trigger: str = "manual"):
     """
-    Step-by-step pipeline — runs each phase one at a time with pauses:
-    Phase 1: Store — check existing leads
-    Phase 2: Email — send emails to pending leads
-    Phase 3: Forms — fill contact forms on websites
-    Phase 4: Report — generate summary
-    Stops after one complete cycle (no auto-restart).
+    One daily cycle:
+      1. Queue check — if any lead is still un-emailed or its form un-submitted, skip extraction
+         and keep working through those leads. Only when both queues are empty, extract a fresh
+         batch of quality-gated leads.
+      2. Email — at most DAILY_EMAIL_LIMIT sends per day.
+      3. Forms — at most DAILY_FORM_LIMIT successful submissions per day.
+      4. Summary.
+    Caps are enforced again inside process_lead_email / run_form_filling, so manual
+    dashboard actions can't exceed them either.
     """
-    from modules.database import get_total_leads, get_leads_for_email, get_leads_for_form_fill, db
+    import config
+    from modules.database import get_total_leads, get_daily_quota_status, release_stuck_form_leads
+    from modules.form_outreach import outreach_state
 
     agent_state["agent_loop_running"] = True
     agent_state["pipeline_running"] = True
     agent_state["status"] = "running"
     agent_state["started_at"] = datetime.now(timezone.utc).isoformat()
-    agent_state["cycle"] = 1
+    agent_state["cycle"] = int(agent_state.get("cycle") or 0) + 1
     agent_state["completed_phases"] = []
-    add_log("Agent started — running step-by-step pipeline", category="system")
+    add_log(f"Daily cycle started ({trigger})", category="system")
 
     def _phase_pause(seconds=3):
-        """Short pause between phases so UI can update."""
         for _ in range(seconds):
             if not agent_state["agent_loop_running"]:
                 return False
             time.sleep(1)
         return True
 
-    def _get_pending_email_count() -> int:
-        import config
-        if not db:
-            return 0
-        try:
-            min_score = getattr(config, "SCORE_THRESHOLDS", {}).get("min_qualify", 40)
-            return db.count("leads", {
-                "email_sent": "eq.false",
-                "excluded": "eq.false",
-                "score": f"gte.{min_score}",
-                "contact_email": "neq.",
-            })
-        except Exception:
-            return 0
+    completed = False
+    try:
+        # ── PHASE 1: queue check → extract only if nothing is left ──
+        agent_state["current_step"] = "store"
+        if not outreach_state.get("running"):
+            released = release_stuck_form_leads()
+            if released:
+                add_log(f"Returned {released} interrupted form submissions to the queue", category="form")
 
-    def _get_email_remaining_today() -> int:
-        import config
-        from modules.database import get_business_day_range
-        if not db:
-            return 0
-        _, start_utc, end_utc = get_business_day_range(reset_hour_local=11)
-
-        instantly_key = (getattr(config, "INSTANTLY_API_KEY", "") or "").strip()
-        smtp_user = (getattr(config, "SMTP_USER", "") or "").strip()
-        smtp_password = (getattr(config, "SMTP_PASSWORD", "") or "").strip()
-        using_instantly = bool(instantly_key and "your" not in instantly_key.lower())
-        using_smtp = bool((not using_instantly) and smtp_user and smtp_password and "your" not in smtp_password.lower())
-
-        global_daily_target = int(getattr(config, "DAILY_EMAIL_TARGET", 40) or 40)
-        sent_today_total = db.count("outreach_log", {"and": f"(channel.eq.email,sent_at.gte.{start_utc},sent_at.lt.{end_utc})"})
-        remaining_global = max(0, global_daily_target - int(sent_today_total or 0))
-        if remaining_global <= 0:
-            return 0
-
-        total_remaining = 0
-        sending_emails = getattr(config, "SENDING_EMAILS", []) or []
-        emails_per = int(getattr(config, "EMAILS_PER_DOMAIN", 65) or 65)
-
-        if using_smtp:
-            smtp_domain = smtp_user.split("@")[-1].lower() if "@" in smtp_user else smtp_user.lower()
-            sent_today = db.count("leads", {
-                "email_sent": "eq.true",
-                "sending_domain": f"eq.{smtp_domain}",
-                "and": f"(email_sent_at.gte.{start_utc},email_sent_at.lt.{end_utc})",
-            })
-            return min(remaining_global, max(0, emails_per - int(sent_today or 0)))
-
-        for addr in sending_emails:
-            if "@" not in addr:
-                continue
-            domain = addr.split("@")[-1].lower()
-            sent_today = db.count("leads", {
-                "email_sent": "eq.true",
-                "sending_domain": f"eq.{domain}",
-                "and": f"(email_sent_at.gte.{start_utc},email_sent_at.lt.{end_utc})",
-            })
-            total_remaining += max(0, emails_per - int(sent_today or 0))
-
-        return min(remaining_global, total_remaining)
-
-    email_blocked = False
-    # ══════════════════════════════════════════════════════
-    # PHASE 1: STORE — Check existing leads
-    # ══════════════════════════════════════════════════════
-    agent_state["current_step"] = "store"
-    add_log("▶ Phase 1: Checking existing leads...", category="system")
-    time.sleep(2)
-
-    import config
-    target_leads = int(getattr(config, "DAILY_LEAD_TARGET", 120) or 120)
-    # One-day override (used for "today keep 40")
-    biz = _current_business_date_str()
-    if agent_state.get("lead_target_override") and agent_state.get("lead_target_override_business_date") == biz:
-        target_leads = int(agent_state["lead_target_override"])
-
-    total = get_total_leads()
-    pending_email = get_leads_for_email(limit=1000)
-    pending_count = _get_pending_email_count()
-
-    if pending_count > 0:
-        add_log(
-            f"✓ Existing queue found — {pending_count} leads pending email. "
-            "Skipping new lead scraping until pending queue reaches 0.",
-            category="lead",
-        )
-        agent_state["stats"]["pending_email"] = pending_count
-        agent_state["stats"]["leads_stored"] = total
-    else:
-        add_log(f"No pending email queue. Need fresh leads — target {target_leads}. Starting scrape...", category="lead")
-        # Start a new batch window now (business-day independent; lasts until pending hits 0)
-        _ensure_batch_state_loaded()
-        from modules.database import get_business_day_range
-        _, start_utc, _ = get_business_day_range(reset_hour_local=11)
-        _set_batch_active(start_utc_iso=start_utc, lead_target=target_leads)
-
-        prev_total = total
-        scrape_round = 0
-        while agent_state["agent_loop_running"] and pending_count == 0 and scrape_round < 2:
-            scrape_round += 1
-            agent_state["current_step"] = "scrape"
-            add_log(f"▶ Scrape round {scrape_round}/2: pending queue is 0, collecting fresh leads", category="lead")
-            _run_step_sync("scrape")
-
-            total = get_total_leads()
-            pending_count = _get_pending_email_count()
-            inserted = total - prev_total
-            agent_state["stats"]["leads_stored"] = total
+        quota = get_daily_quota_status()
+        _cache_quota(quota)
+        if not quota["extraction_needed"]:
             add_log(
-                f"✓ Scrape round {scrape_round} complete — +{max(0, inserted)} new leads "
-                f"(pending email queue: {pending_count}/{target_leads})",
+                f"✓ {quota['pending_email']} leads not yet emailed, {quota['pending_form']} forms not yet "
+                "submitted — skipping extraction and continuing with existing leads",
                 category="lead",
             )
+        else:
+            add_log(f"No untouched leads left — extracting up to {config.DAILY_LEAD_TARGET} top-quality leads",
+                    category="lead")
+            agent_state["current_step"] = "scrape"
+            before = get_total_leads()
+            _run_step_sync("scrape")
+            added = max(0, get_total_leads() - before)
+            quota = get_daily_quota_status()
+            _cache_quota(quota)
+            add_log(f"✓ Extraction finished — {added} new leads stored "
+                    f"({quota['pending_email']} to email, {quota['pending_form']} forms to submit)", category="lead")
+            agent_state["current_step"] = "store"
 
-            if inserted <= 0:
-                add_log("⚠ No new leads added in this round — treating countries as completed/exhausted. Continuing pipeline.", "warning", category="lead")
-                break
+        agent_state["stats"]["leads_stored"] = get_total_leads()
+        agent_state["completed_phases"].append("store")
+        if not _phase_pause():
+            return
 
-            if pending_count > 0:
-                add_log(
-                    f"✓ Fresh queue prepared — {pending_count} leads pending email.",
-                    category="lead",
-                )
-                break
+        # ── PHASE 2: email ──
+        agent_state["current_step"] = "email"
+        _run_email_phase()
+        agent_state["completed_phases"].append("email")
+        if not _phase_pause():
+            return
 
-            prev_total = total
+        # ── PHASE 3: forms ──
+        agent_state["current_step"] = "forms"
+        _run_form_phase()
+        agent_state["completed_phases"].append("forms")
+        if not _phase_pause():
+            return
 
-        agent_state["current_step"] = "store"
-        pending_email = get_leads_for_email(limit=1000)
-        add_log(f"✓ Lead collection finished — {total} leads ready ({len(pending_email)} pending email)", category="lead")
-
-    agent_state["completed_phases"].append("store")
-    add_log(f"✓ Phase 1 complete — {total} leads ready", category="system")
-
-    if not _phase_pause(3):
-        _agent_cleanup(); return
-
-    # ══════════════════════════════════════════════════════
-    # PHASE 2: EMAIL — Send emails one by one
-    # ══════════════════════════════════════════════════════
-    agent_state["current_step"] = "email"
-    import config
-    pending_email_total = _get_pending_email_count()
-    email_remaining_today = _get_email_remaining_today()
-    agent_state["stats"]["pending_email"] = pending_email_total
-    agent_state["stats"]["email_remaining_today"] = email_remaining_today
-
-    add_log(
-        f"▶ Phase 2: Email sending — {pending_email_total} leads pending, {email_remaining_today} sends remaining today",
-        category="email",
-    )
-    time.sleep(1)
-
-    email_sent_count = 0
-    from modules.email_queue import process_lead_email
-
-    for i, lead in enumerate(pending_email):
-        if not agent_state["agent_loop_running"]:
-            break
-
-        email_remaining_today = _get_email_remaining_today()
-        if email_remaining_today <= 0:
-            add_log("⏸ Daily email limit reached — holding email phase and continuing to forms", category="email")
-            break
-
-        company = lead.get("company_name", "?")
-        email = lead.get("contact_email", "?")
-        add_log(f"  Sending email {i+1}/{len(pending_email)}: {company} ({email})", category="email")
-
-        try:
-            result = process_lead_email(lead, sequence_stage=1, return_reason=True)
-            success, reason = result if isinstance(result, tuple) else (bool(result), "")
-            if success:
-                email_sent_count += 1
-                add_log(f"  ✓ Email sent to {email}", category="email")
-            else:
-                suffix = f" — {reason}" if reason else ""
-                add_log(f"  ⚠ Skipped {email}{suffix}", "warning", category="email")
-        except Exception as e:
-            add_log(f"  ✗ Email failed for {email}: {e}", "error", category="email")
-
-        agent_state["stats"]["emails_sent"] = email_sent_count
-
-        try:
-            delay_min, delay_max = getattr(config, "EMAIL_SEND_DELAY", (2, 8))
-            if success:
-                time.sleep(random.uniform(float(delay_min), float(delay_max)))
-            else:
-                time.sleep(0.5)
-        except Exception:
-            time.sleep(2)
-
-    agent_state["completed_phases"].append("email")
-    pending_email_total = _get_pending_email_count()
-    email_remaining_today = _get_email_remaining_today()
-    agent_state["stats"]["pending_email"] = pending_email_total
-    agent_state["stats"]["email_remaining_today"] = email_remaining_today
-    add_log(
-        f"✓ Phase 2 complete — {email_sent_count} emails sent this run | {email_remaining_today} remaining today | {pending_email_total} leads still pending email",
-        category="email",
-    )
-    if pending_email_total > 0 and email_sent_count == 0:
-        email_blocked = True
+        # ── PHASE 4: summary ──
+        agent_state["current_step"] = "report"
+        quota = get_daily_quota_status()
+        _cache_quota(quota)
         add_log(
-            f"⚠ No emails were sent in this run while {pending_email_total} leads are still pending. "
-            "Not marking run as completed.",
-            "warning",
-            category="email",
+            f"📊 Today: {quota['emails_sent_today']}/{quota['email_limit']} emails, "
+            f"{quota['forms_submitted_today']}/{quota['form_limit']} forms | "
+            f"Still queued: {quota['pending_email']} to email, {quota['pending_form']} forms",
+            category="system",
         )
-
-    if not _phase_pause(3):
-        _agent_cleanup(); return
-
-    # ══════════════════════════════════════════════════════
-    # PHASE 3: FORMS — Fill forms one by one
-    # ══════════════════════════════════════════════════════
-    agent_state["current_step"] = "forms"
-    add_log("▶ Phase 3: Starting form submissions...", category="form")
-    time.sleep(1)
-
-    try:
-        from modules.form_outreach import run_form_outreach
-        from modules.database import get_form_outreach_counts
-
-        total_runs = 0
-        while agent_state["agent_loop_running"]:
-            counts = get_form_outreach_counts()
-            pending_forms = int(counts.get("pending", 0) or 0)
-            processing_forms = int(counts.get("processing", 0) or 0)
-
-            if pending_forms <= 0 and processing_forms <= 0:
-                break
-
-            batch_size = min(100, max(0, pending_forms))
-            if batch_size == 0:
-                break
-
-            total_runs += 1
-            add_log(f"  Form batch {total_runs}: {pending_forms} pending — processing {batch_size}", category="form")
-            run_form_outreach(batch_size=batch_size)
-
-            counts = get_form_outreach_counts()
-            agent_state["stats"]["forms_filled"] = int(counts.get("success", 0) or 0)
-            agent_state["stats"]["forms_failed"] = int(counts.get("failed", 0) or 0) + int(counts.get("no_form", 0) or 0)
-            agent_state["stats"]["forms_pending"] = int(counts.get("pending", 0) or 0)
-
-            add_log(
-                f"  ✓ Forms progress — success: {counts.get('success',0)}, failed: {counts.get('failed',0)}, no form: {counts.get('no_form',0)}, pending: {counts.get('pending',0)}",
-                category="form",
-            )
-
-            time.sleep(1)
-
-        counts = get_form_outreach_counts()
-        agent_state["stats"]["forms_filled"] = int(counts.get("success", 0) or 0)
-        agent_state["stats"]["forms_failed"] = int(counts.get("failed", 0) or 0) + int(counts.get("no_form", 0) or 0)
-        agent_state["stats"]["forms_pending"] = int(counts.get("pending", 0) or 0)
-        add_log(
-            f"✓ Phase 3 complete — {counts.get('success',0)} forms submitted, {counts.get('failed',0)} failed, {counts.get('no_form',0)} no form",
-            category="form",
-        )
+        if quota["extraction_needed"]:
+            add_log("All leads have been contacted — the next cycle will extract a fresh batch", category="system")
+        agent_state["completed_phases"].append("report")
+        completed = True
     except Exception as e:
-        add_log(f"⚠ Form phase error: {e}", "error", category="form")
-
-    agent_state["completed_phases"].append("forms")
-
-    if not _phase_pause(3):
-        _agent_cleanup(); return
-
-    # ══════════════════════════════════════════════════════
-    # PHASE 4: REPORT — Generate summary
-    # ══════════════════════════════════════════════════════
-    agent_state["current_step"] = "report"
-    add_log("▶ Phase 4: Generating pipeline report...", category="system")
-    time.sleep(2)
-
-    try:
-        total_now = get_total_leads()
-        emailed_count = db.count("leads", {"email_sent": "eq.true"}) if db else 0
-        forms_count = db.count("leads", {"form_filled": "eq.true"}) if db else 0
-        replied_count = db.count("leads", {"replied": "eq.true"}) if db else 0
-
-        add_log(f"📊 ═══ PIPELINE REPORT ═══", category="system")
-        add_log(f"  Total leads:    {total_now}", category="system")
-        add_log(f"  Emails sent:    {emailed_count}", category="system")
-        add_log(f"  Forms filled:   {forms_count}", category="system")
-        add_log(f"  Replies:        {replied_count}", category="system")
-        add_log(f"✓ Phase 4 complete — report generated", category="system")
-    except Exception as e:
-        add_log(f"⚠ Report error: {e}", "error")
-
-    agent_state["completed_phases"].append("report")
-
-    # ══════════════════════════════════════════════════════
-    # ALL PHASES COMPLETE — STOP AGENT
-    # ══════════════════════════════════════════════════════
-    if email_blocked:
+        add_log(f"✗ Daily cycle error: {e}", "error", category="system")
+        agent_state["errors"].append({"step": "daily_cycle", "error": str(e), "time": datetime.now(timezone.utc).isoformat()})
+    finally:
         agent_state["current_step"] = None
         agent_state["last_run"] = datetime.now(timezone.utc).isoformat()
-        agent_state["status"] = "idle"
-        add_log("⚠ Run finished with pending leads but 0 emails sent. Please check sender/auth/email quality.", "warning", category="system")
+        if completed:
+            agent_state["status"] = "completed"
+            add_log("✅ Daily cycle complete", category="system")
+            time.sleep(5)  # let the dashboard show the completed state
         _agent_cleanup()
-        return
 
-    agent_state["current_step"] = None
-    agent_state["last_run"] = datetime.now(timezone.utc).isoformat()
-    agent_state["status"] = "completed"
-    add_log(f"✅ All phases completed! Pipeline finished successfully.", category="system")
 
-    # Keep "completed" status for 5 seconds so UI shows the message
-    time.sleep(5)
+# ═══════════════════════════════════════════════════════════════
+# DAILY SCHEDULER + QUOTA CACHE
+# ═══════════════════════════════════════════════════════════════
 
-    # Auto-stop
-    _agent_cleanup()
-    # If pending queue is 0, close batch so dashboard resets counters
-    try:
-        if _get_pending_email_count() <= 0:
-            _set_batch_inactive()
-    except Exception:
-        pass
+_quota_cache = {"at": 0.0, "data": None}
+
+
+def _cache_quota(data: dict):
+    _quota_cache["at"] = time.time()
+    _quota_cache["data"] = data
+
+
+def get_cached_quota(max_age: float = 15.0) -> dict:
+    """Quota status for dashboard polling without hammering the database."""
+    if _quota_cache["data"] is None or time.time() - _quota_cache["at"] > max_age:
+        try:
+            from modules.database import get_daily_quota_status
+            _cache_quota(get_daily_quota_status())
+        except Exception as e:
+            logger.warning(f"Quota status unavailable: {e}")
+    return _quota_cache["data"] or {}
+
+
+def daily_scheduler_thread():
+    """Start the daily cycle once per business day, after DAILY_RUN_HOUR:DAILY_RUN_MINUTE local time."""
+    import config
+    last_started_day = None
+    while True:
+        try:
+            if getattr(config, "AUTO_DAILY_RUN", True):
+                now_local = datetime.now(timezone.utc).astimezone()
+                run_at = now_local.replace(hour=config.DAILY_RUN_HOUR, minute=config.DAILY_RUN_MINUTE,
+                                           second=0, microsecond=0)
+                day = _current_business_date_str(config.BUSINESS_DAY_RESET_HOUR)
+                if day != last_started_day and now_local >= run_at:
+                    if start_daily_cycle(trigger="auto daily run"):
+                        last_started_day = day
+        except Exception as e:
+            logger.error(f"[Scheduler] {e}")
+        time.sleep(60)
 
 
 def _agent_cleanup():
@@ -1396,7 +1314,7 @@ def _fallback_chat(msg: str) -> str:
     if "keyword" in lower:
         import config
         kws = config.SEARCH_KEYWORDS[:5]
-        return f"**Search keywords:** " + ", ".join(kw.replace(' {country}','') for kw in kws) + f" (+{len(config.SEARCH_KEYWORDS)-5} more)"
+        return f"**Search keywords:** " + ", ".join(kws) + f" (+{max(0, len(config.SEARCH_KEYWORDS)-5)} more)"
 
     # Start / run
     if "start" in lower or "run" in lower:
@@ -1685,6 +1603,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "workers": agent_state.get("worker_status", {}),
                 "completed_phases": agent_state.get("completed_phases", []),
                 "daily_reset_notice": agent_state.get("daily_reset_notice"),
+                "quota": get_cached_quota(),
             })
 
         elif path == "/api/logs":
@@ -2422,7 +2341,10 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "supabaseKey": os.getenv("SUPABASE_KEY", ""),
                 "leadTarget": config.DAILY_LEAD_TARGET,
                 "minScore": config.SCORE_THRESHOLDS.get("min_qualify", 40),
-                "keywords": ", ".join(kw.replace(" {country}", "") for kw in config.SEARCH_KEYWORDS),
+                "keywords": ", ".join(_extra_keywords(config.SEARCH_KEYWORDS)),
+                "bestKeywords": list(config.BEST_SEARCH_KEYWORDS),
+                "dailyEmailLimit": config.DAILY_EMAIL_LIMIT,
+                "dailyFormLimit": config.DAILY_FORM_LIMIT,
                 "countries": ", ".join(config.TARGET_COUNTRIES),
                 "emailsPerDomain": config.EMAILS_PER_DOMAIN,
                 "pauseCountry": config.AUTO_EXCLUSION.get("country_pause_after_leads", 200),
@@ -2534,12 +2456,10 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     if body.get("minScore"):
                         config.SCORE_THRESHOLDS["min_qualify"] = int(body["minScore"])
                         _set_env("MIN_QUALIFY_SCORE", config.SCORE_THRESHOLDS["min_qualify"])
-                    if body.get("keywords"):
-                        if isinstance(body["keywords"], list):
-                            config.SEARCH_KEYWORDS = [kw.strip() for kw in body["keywords"] if kw.strip()]
-                        elif isinstance(body["keywords"], str):
-                            config.SEARCH_KEYWORDS = [kw.strip() for kw in body["keywords"].split(",") if kw.strip()]
-                        _set_env("SEARCH_KEYWORDS", json.dumps(config.SEARCH_KEYWORDS))
+                    if "keywords" in body:
+                        extras = _extra_keywords(body["keywords"])
+                        config.SEARCH_KEYWORDS = config.merge_keywords(extras)
+                        _set_env("SEARCH_KEYWORDS", json.dumps(extras))
                     if body.get("countries"):
                         if isinstance(body["countries"], list):
                             config.TARGET_COUNTRIES = [c.strip() for c in body["countries"] if c.strip()]
@@ -2654,28 +2574,23 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             self._json_response({"status": "started", "step": step})
 
         elif path == "/api/run-pipeline":
-            if agent_state["pipeline_running"]:
+            if agent_state["pipeline_running"] or not start_daily_cycle(trigger="full pipeline"):
                 self._json_response({"error": "Pipeline already running"}, 409)
                 return
-            t = threading.Thread(target=run_full_pipeline_thread, daemon=True)
-            t.start()
             self._json_response({"status": "pipeline_started"})
 
         elif path == "/api/start-agent":
-            # Start continuous loop mode
-            if agent_state["agent_loop_running"]:
+            if not start_daily_cycle(trigger="started from dashboard"):
                 self._json_response({"error": "Agent already running"}, 409)
                 return
-            interval = body.get("interval", 3600)
-            agent_state["loop_interval"] = int(interval)
-            t = threading.Thread(target=agent_loop_thread, daemon=True)
-            t.start()
-            self._json_response({"status": "agent_started", "mode": "continuous", "interval": interval})
+            self._json_response({"status": "agent_started", "mode": "daily_cycle"})
 
         elif path == "/api/stop-agent":
             # Stop ALL workers immediately
             from modules.email_queue import stop_email_workers
+            from modules.form_outreach import stop_form_outreach
             stop_email_workers()
+            stop_form_outreach()
             agent_state["agent_loop_running"] = False
             agent_state["pipeline_running"] = False
             agent_state["status"] = "idle"
@@ -2707,12 +2622,10 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 if body.get("minScore"):
                     config.SCORE_THRESHOLDS["min_qualify"] = int(body["minScore"])
                     _set_env("MIN_QUALIFY_SCORE", config.SCORE_THRESHOLDS["min_qualify"])
-                if body.get("keywords"):
-                    if isinstance(body["keywords"], list):
-                        config.SEARCH_KEYWORDS = [k.strip() for k in body["keywords"] if k.strip()]
-                    elif isinstance(body["keywords"], str):
-                        config.SEARCH_KEYWORDS = [k.strip() + " {country}" for k in body["keywords"].split(",") if k.strip()]
-                    _set_env("SEARCH_KEYWORDS", json.dumps(config.SEARCH_KEYWORDS))
+                if "keywords" in body:
+                    extras = _extra_keywords(body["keywords"])
+                    config.SEARCH_KEYWORDS = config.merge_keywords(extras)
+                    _set_env("SEARCH_KEYWORDS", json.dumps(extras))
                 if body.get("countries"):
                     if isinstance(body["countries"], list):
                         config.TARGET_COUNTRIES = body["countries"]
@@ -2867,7 +2780,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 if body.get("minReply"):
                     config.AUTO_EXCLUSION["source_min_reply_rate"] = float(body["minReply"]) / 100
                 if body.get("keywords") and isinstance(body["keywords"], list):
-                    config.SEARCH_KEYWORDS = [kw.strip() for kw in body["keywords"] if kw.strip()]
+                    config.SEARCH_KEYWORDS = config.merge_keywords(_extra_keywords(body["keywords"]))
                     add_log(f"Search keywords updated: {len(config.SEARCH_KEYWORDS)} keywords", category="system")
                 add_log("Settings updated via dashboard", category="system")
                 self._json_response({"status": "saved"})
@@ -3047,6 +2960,13 @@ def main():
         logger.info("[Server] Reply tracker started at server boot")
     except Exception as e:
         logger.error(f"[Server] Failed to start reply tracker: {e}")
+
+    import config
+    if config.AUTO_DAILY_RUN:
+        threading.Thread(target=daily_scheduler_thread, daemon=True, name="daily-scheduler").start()
+        print(f"  Daily run:  every day after {config.DAILY_RUN_HOUR:02d}:{config.DAILY_RUN_MINUTE:02d} "
+              f"(max {config.DAILY_EMAIL_LIMIT} emails, {config.DAILY_FORM_LIMIT} forms)")
+        print()
 
     # Open browser automatically (skip if NOBROWSER env is set)
     if not os.getenv("NOBROWSER"):

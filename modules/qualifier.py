@@ -28,7 +28,8 @@ Microdyne Engineering is looking for:
 - Companies that buy precision turned components in brass, SS, or mild steel
 - Buyers of mechanical seals (cartridge, spring, bellow, teflon bellow)
 
-Target buyers: general engineering firms, pump/valve manufacturers, automotive component manufacturers, electrical/electronic equipment manufacturers, hydraulic/pneumatic component manufacturers — any manufacturer likely to subcontract turning work or buy turned components.
+Target buyers: OEM manufacturers that consume turned parts or mechanical seals — pump/valve, hydraulic cylinder, compressor/blower, gearbox, electric motor, agitator/mixer and process equipment, automotive component, and machinery (packaging, textile, agricultural, food, pharma, special purpose) manufacturers.
+NOT targets: other CNC job shops or turning/machining service providers — they are competitors (score 0-10), and B2B directories/marketplaces.
 
 Score this lead from 0-100 based on how likely they are to outsource CNC turning job work to Microdyne Engineering or buy their mechanical seals:
 
@@ -106,10 +107,10 @@ def score_lead_rules(lead: dict) -> dict:
 
     # Lead type scoring
     type_scores = {
-        "cnc_turning_job_work_buyer": 30, "precision_turned_component_buyer": 25,
-        "screw_nut_sleeve_manufacturer": 25, "pump_valve_manufacturer": 20,
-        "automotive_component_manufacturer": 20, "electrical_equipment_manufacturer": 15,
-        "hydraulic_pneumatic_manufacturer": 15, "general_engineering": 10, "other": 0,
+        "pump_valve_manufacturer": 25, "process_equipment_manufacturer": 25,
+        "hydraulic_pneumatic_manufacturer": 25, "automotive_component_manufacturer": 20,
+        "machinery_equipment_manufacturer": 20, "compressor_blower_manufacturer": 20,
+        "electrical_equipment_manufacturer": 15, "general_engineering": 10, "other": 0,
     }
     type_bonus = type_scores.get(lead.get("lead_type", "other"), 0)
     score += type_bonus

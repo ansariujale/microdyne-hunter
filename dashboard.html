@@ -136,6 +136,21 @@
 
   /* Tags & Badges */
   .tag{display:inline-flex;align-items:center;font-size:10.5px;padding:3px 8px;border-radius:5px;font-weight:600;letter-spacing:0.2px;}
+  .quota-panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin:-12px 0 36px;box-shadow:var(--shadow-sm);}
+  .quota-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  .quota-title{font-size:15px;font-weight:700;color:var(--text);}
+  .quota-sub{font-size:12px;color:var(--text-dim);margin-top:2px;}
+  .quota-state{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;background:var(--green-bg);border:1px solid var(--green-border);color:var(--green);max-width:100%;}
+  .quota-state.paused{background:var(--orange-bg);border-color:var(--orange-border);color:var(--orange);}
+  .quota-state-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0;}
+  .quota-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  @media(max-width:700px){.quota-grid{grid-template-columns:1fr;}}
+  .quota-label{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;color:var(--text-muted);margin-bottom:8px;}
+  .quota-label strong{font-size:14px;color:var(--text);font-variant-numeric:tabular-nums;}
+  .quota-bar{height:8px;border-radius:999px;background:var(--surface2);overflow:hidden;}
+  .quota-fill{height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--green),var(--blue));transition:width 0.6s cubic-bezier(.16,1,.3,1);}
+  .quota-fill.full{background:linear-gradient(90deg,var(--orange),var(--yellow));}
+  .quota-foot{font-size:11.5px;color:var(--text-dim);margin-top:7px;font-variant-numeric:tabular-nums;}
   .tag-green{background:rgba(46,204,113,0.12);color:#2ecc71;}
   .tag-blue{background:var(--blue-bg);color:var(--blue);}
   .tag-purple{background:var(--purple-bg);color:var(--purple);}
@@ -617,7 +632,7 @@
 
 <!-- HEADER -->
 <div class="header">
-  <div class="logo" style="background:#fff;border-color:#3498db;padding:2px;"><img src="images/logo.svg" alt="Microdyne Hunter" style="width:24px;height:24px;object-fit:contain;"></div>
+  <div class="logo" style="background:#fff;border-color:#3498db;padding:2px;"><img src="images/logo-mark.png" alt="Microdyne Hunter" style="width:24px;height:24px;object-fit:contain;"></div>
   <div class="h-title">Microdyne Hunter <span>Command Center v2.0</span></div>
   <div class="h-right">
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme">
@@ -705,7 +720,7 @@
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
-          <div style="font-size:10px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;" id="startHint">Continuous mode</div>
+          <div style="font-size:10px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;" id="startHint">Runs today's cycle now</div>
           <button class="start-btn go" id="startAgentBtn" onclick="toggleAgent()" style="padding:12px 32px;font-size:13px;letter-spacing:0.5px;text-transform:uppercase;">Start Agent</button>
         </div>
       </div>
@@ -779,6 +794,29 @@
         </div>
       </div>
 
+      <!-- TODAY'S OUTREACH QUOTA -->
+      <div class="quota-panel">
+        <div class="quota-head">
+          <div>
+            <div class="quota-title">Today's outreach</div>
+            <div class="quota-sub" id="quotaSchedule">Runs automatically once a day</div>
+          </div>
+          <div class="quota-state" id="quotaState"><span class="quota-state-dot"></span><span id="quotaStateText">Checking queue…</span></div>
+        </div>
+        <div class="quota-grid">
+          <div class="quota-item">
+            <div class="quota-label"><span>Emails sent</span><strong><span id="quotaEmailsSent">0</span> / <span id="quotaEmailLimit">10</span></strong></div>
+            <div class="quota-bar"><div class="quota-fill" id="quotaEmailBar"></div></div>
+            <div class="quota-foot"><span id="quotaPendingEmail">0</span> leads still to email</div>
+          </div>
+          <div class="quota-item">
+            <div class="quota-label"><span>Forms submitted</span><strong><span id="quotaFormsSent">0</span> / <span id="quotaFormLimit">100</span></strong></div>
+            <div class="quota-bar"><div class="quota-fill" id="quotaFormBar"></div></div>
+            <div class="quota-foot"><span id="quotaPendingForm">0</span> contact forms still to submit</div>
+          </div>
+        </div>
+      </div>
+
       <!-- BOTTOM: HOT LEADS + LIVE ACTIVITY -->
       <div class="card-grid">
         <div class="card">
@@ -804,13 +842,13 @@
         <select class="input" id="filterCity" onchange="filterLeads()"><option value="">All Cities</option></select>
         <select class="input" id="filterType" onchange="filterLeads()">
           <option value="">All Types</option>
-          <option value="cnc_turning_job_work_buyer">CNC Turning Job Work</option>
-          <option value="precision_turned_component_buyer">Precision Turned Components</option>
-          <option value="screw_nut_sleeve_manufacturer">Screw/Nut/Sleeve Mfr</option>
-          <option value="pump_valve_manufacturer">Pump/Valve Manufacturer</option>
+          <option value="pump_valve_manufacturer">Pump / Valve Manufacturer</option>
+          <option value="process_equipment_manufacturer">Process Equipment (Agitator/Mixer)</option>
+          <option value="hydraulic_pneumatic_manufacturer">Hydraulic / Pneumatic</option>
           <option value="automotive_component_manufacturer">Automotive Components</option>
+          <option value="machinery_equipment_manufacturer">Machinery Manufacturer</option>
+          <option value="compressor_blower_manufacturer">Compressor / Blower</option>
           <option value="electrical_equipment_manufacturer">Electrical Equipment</option>
-          <option value="hydraulic_pneumatic_manufacturer">Hydraulic/Pneumatic</option>
           <option value="general_engineering">General Engineering</option>
         </select>
         <select class="input" id="filterSource" onchange="filterLeads()">
@@ -1052,13 +1090,13 @@
             <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Type:</label>
             <select id="rptFilterType" onchange="loadReportData()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;min-width:100px;">
               <option value="">All Types</option>
-              <option value="cnc_turning_job_work_buyer">CNC Turning Job Work</option>
-              <option value="precision_turned_component_buyer">Turned Components</option>
-              <option value="screw_nut_sleeve_manufacturer">Screw/Nut/Sleeve</option>
-              <option value="pump_valve_manufacturer">Pump/Valve Mfr</option>
-              <option value="automotive_component_manufacturer">Automotive</option>
-              <option value="electrical_equipment_manufacturer">Electrical Equip.</option>
+              <option value="pump_valve_manufacturer">Pump/Valve</option>
+              <option value="process_equipment_manufacturer">Process Equip.</option>
               <option value="hydraulic_pneumatic_manufacturer">Hydraulic/Pneumatic</option>
+              <option value="automotive_component_manufacturer">Automotive</option>
+              <option value="machinery_equipment_manufacturer">Machinery</option>
+              <option value="compressor_blower_manufacturer">Compressor/Blower</option>
+              <option value="electrical_equipment_manufacturer">Electrical Equip.</option>
               <option value="general_engineering">General Engineering</option>
             </select>
           </div>
@@ -1304,7 +1342,7 @@
           </div>
           <div class="setting-group">
             <div class="setting-label">Search Keywords (comma-separated)</div>
-            <input class="input" style="width:100%" value="CNC turning job work, CNC turned components manufacturer, precision turning subcontractor, screw machining job work, turned parts supplier, brass turned components manufacturer, contract manufacturing CNC turning, sleeve and bushing manufacturer, mechanical seal manufacturer, teflon bellow seal supplier" id="settingKeywords">
+            <input class="input" style="width:100%" value="" placeholder="Managed in Admin Panel — best keyword set is always searched" id="settingKeywords">
           </div>
           <div class="setting-group">
             <div class="setting-label">Target Countries (comma-separated)</div>
@@ -1653,7 +1691,7 @@ let pollInterval = null;
 // ═══════════════════════════════════════════════════════════════
 const DEMO = {
   countries: ['UAE','UK','US','India','Germany','France','Netherlands','Nigeria','South Africa','Kenya','Saudi Arabia','Singapore'],
-  types: ['cnc_turning_job_work_buyer','precision_turned_component_buyer','screw_nut_sleeve_manufacturer','pump_valve_manufacturer','automotive_component_manufacturer','electrical_equipment_manufacturer','hydraulic_pneumatic_manufacturer','general_engineering'],
+  types: ['pump_valve_manufacturer','process_equipment_manufacturer','hydraulic_pneumatic_manufacturer','automotive_component_manufacturer','machinery_equipment_manufacturer','compressor_blower_manufacturer','electrical_equipment_manufacturer','general_engineering'],
   sources: ['apollo','google_search','google_maps','directory','conference'],
   domains: ['gmail.com','microdyneengineering.com'],
   names: ['John Smith','Ahmed Al-Mansoor','Priya Sharma','Carlos Garcia','Li Wei','Sarah Johnson','Mohammed Ali','Elena Petrova','David Kim','Fatima Hassan','James Wilson','Anita Desai','Robert Chen','Maria Lopez','Yusuf Ibrahim'],
@@ -3978,6 +4016,7 @@ async function pollStatus(){
   const data = await api('/api/status');
   if(!data) return;
   renderDailyResetNotice(data.daily_reset_notice);
+  renderQuota(data.quota);
   // Update agent status indicator
   const statusEl = document.getElementById('agentStatus');
   if(data.status==='running'){
@@ -4057,6 +4096,34 @@ async function pollStatus(){
   if(now - lastDataRefresh > DATA_REFRESH_INTERVAL){
     lastDataRefresh = now;
     await refreshDashboardData();
+  }
+}
+
+function renderQuota(q){
+  if(!q || q.email_limit === undefined) return;
+  const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+  const bar = (id, used, limit) => {
+    const el = document.getElementById(id); if(!el) return;
+    const pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
+    el.style.width = pct + '%';
+    el.classList.toggle('full', used >= limit);
+  };
+  set('quotaEmailsSent', q.emails_sent_today); set('quotaEmailLimit', q.email_limit);
+  set('quotaFormsSent', q.forms_submitted_today); set('quotaFormLimit', q.form_limit);
+  set('quotaPendingEmail', q.pending_email); set('quotaPendingForm', q.pending_form);
+  bar('quotaEmailBar', q.emails_sent_today, q.email_limit);
+  bar('quotaFormBar', q.forms_submitted_today, q.form_limit);
+  const state = document.getElementById('quotaState');
+  if(state){
+    state.classList.toggle('paused', !q.extraction_needed);
+    set('quotaStateText', q.extraction_needed
+      ? 'Queue empty — next run extracts fresh leads'
+      : 'Extraction paused — finishing existing leads first');
+  }
+  if(q.daily_run_time){
+    set('quotaSchedule', q.auto_daily_run
+      ? `Runs automatically every day after ${q.daily_run_time} · limits reset daily at ${q.reset_time}`
+      : `Auto-run is off — press Start Agent to run today's cycle · limits reset daily at ${q.reset_time}`);
   }
 }
 

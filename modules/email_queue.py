@@ -133,10 +133,61 @@ def _get_smtp_sender_accounts() -> list[dict]:
 
 
 # ═══════════════════════════════════════════════════════════════
+# DAILY EMAIL CAP (every send path goes through process_lead_email)
+# ═══════════════════════════════════════════════════════════════
+
+# Held for the whole check→send→log sequence so concurrent callers
+# (agent loop, dashboard buttons, workers) can never overshoot the cap.
+_daily_send_lock = threading.Lock()
+# In-process tally per business day — second guard in case a log insert fails.
+_local_sent_tally = {"day": None, "count": 0}
+
+
+def _business_day_key() -> str:
+    import config
+    from modules.database import get_business_day_range
+    day, _, _ = get_business_day_range(reset_hour_local=getattr(config, "BUSINESS_DAY_RESET_HOUR", 11))
+    return day
+
+
+def get_email_quota_remaining() -> int:
+    """Remaining sends allowed today. Raises if today's count can't be verified."""
+    import config
+    from modules.database import get_emails_sent_today
+    limit = int(getattr(config, "DAILY_EMAIL_LIMIT", 10))
+    day = _business_day_key()
+    local = _local_sent_tally["count"] if _local_sent_tally["day"] == day else 0
+    sent = max(get_emails_sent_today(strict=True), local)
+    return max(0, limit - sent)
+
+
+def _note_email_sent():
+    day = _business_day_key()
+    if _local_sent_tally["day"] != day:
+        _local_sent_tally["day"] = day
+        _local_sent_tally["count"] = 0
+    _local_sent_tally["count"] += 1
+
+
+# ═══════════════════════════════════════════════════════════════
 # PROCESS A SINGLE LEAD (shared by email + followup workers)
 # ═══════════════════════════════════════════════════════════════
 
 def process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool = False):
+    """Send one email if today's cap allows it. See _process_lead_email for the pipeline."""
+    with _daily_send_lock:
+        try:
+            remaining = get_email_quota_remaining()
+        except Exception as e:
+            logger.error(f"[Email] Could not verify today's send count — not sending: {e}")
+            return (False, "quota_check_failed") if return_reason else False
+        if remaining <= 0:
+            logger.info("[Email] Daily email limit reached — not sending")
+            return (False, "daily_email_limit_reached") if return_reason else False
+        return _process_lead_email(lead, sequence_stage=sequence_stage, return_reason=return_reason)
+
+
+def _process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool = False):
     """
     Full email pipeline for one lead at a given sequence stage:
     1. Validate email
@@ -326,6 +377,8 @@ def process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool 
         # ── 6. Record attempt in warmup tracker ───────────
         if delivery_status in ("sent", "failed", "recorded"):
             record_send(from_email_account)
+        if delivery_status == "sent":
+            _note_email_sent()
 
         # ── 7. Log outreach ───────────────────────────────
         if db and lead_id:
@@ -350,6 +403,7 @@ def process_lead_email(lead: dict, sequence_stage: int = 1, return_reason: bool 
                 "variant_score": winner["score_total"],
                 "variant_id": winner_id,
                 "delivery_status": delivery_status,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
             })
 
         if delivery_status == "recorded":

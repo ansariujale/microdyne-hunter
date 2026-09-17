@@ -27,15 +27,14 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.logging import RichHandler
 
-from config import DAILY_LEAD_TARGET, WEEKLY_REPORT_DAY
+import config
+from config import WEEKLY_REPORT_DAY
 from modules.database import (
-    bulk_insert_leads, get_leads_for_email, get_leads_for_form_fill,
-    get_followup_due, get_hot_leads, get_today_stats, get_total_leads,
+    get_followup_due, get_hot_leads, get_today_stats, get_total_leads, get_daily_quota_status,
 )
 from modules.scraper import run_daily_scrape
 from modules.qualifier import qualify_leads
-from modules.emailer import send_initial_emails, send_followup_emails
-from modules.form_filler import fill_forms_sync
+from modules.emailer import send_followup_emails
 from modules.intelligence import generate_weekly_report, format_report_text
 from modules.notifier import send_daily_summary, send_weekly_report_email
 
@@ -81,28 +80,18 @@ def step_store(leads: list[dict]) -> tuple[int, int]:
     return total, 0
 
 
-def step_email(campaign_id: str = None) -> int:
-    """Step 4: Send cold emails to new leads."""
-    console.print(Panel("Step 4: EMAIL — Sending personalized cold emails", style="bold magenta"))
-    leads = get_leads_for_email(limit=1000)
-    if not leads:
-        console.print("  No leads pending email — skipping")
-        return 0
-    sent = send_initial_emails(leads, campaign_id=campaign_id)
-    console.print(f"  Sent {sent} initial emails")
-    return sent
+def step_email(campaign_id: str = None) -> None:
+    """Email un-emailed leads, up to today's daily email limit."""
+    console.print(Panel(f"EMAIL — up to {config.DAILY_EMAIL_LIMIT} per day", style="bold magenta"))
+    import server
+    server._run_email_phase(keep_running=lambda: True)
 
 
-def step_forms() -> dict:
-    """Step 5: Fill contact forms on lead websites."""
-    console.print(Panel("Step 5: FORM FILL — Submitting website contact forms", style="bold yellow"))
-    leads = get_leads_for_form_fill(limit=1000)
-    if not leads:
-        console.print("  No leads pending form fill — skipping")
-        return {"success": 0, "no_form": 0, "failed": 0}
-    stats = fill_forms_sync(leads, max_concurrent=3)
-    console.print(f"  Forms: {stats['success']} success, {stats['no_form']} no form, {stats['failed']} failed")
-    return stats
+def step_forms() -> None:
+    """Submit contact forms on un-submitted leads, up to today's daily form limit."""
+    console.print(Panel(f"FORMS — up to {config.DAILY_FORM_LIMIT} per day", style="bold yellow"))
+    import server
+    server._run_form_phase(keep_running=lambda: True)
 
 
 def step_followup(campaign_id: str = None) -> int:
@@ -133,63 +122,42 @@ def step_report():
 # ═══════════════════════════════════════════════════════════════
 
 def run_daily_pipeline():
-    """Run the complete daily MicrodyneHunter pipeline."""
+    """Run one daily cycle — the same flow the dashboard and server scheduler use:
+    extract only when no lead is left un-emailed or un-submitted, then email (capped)
+    and submit forms (capped)."""
+    import server
     start = time.time()
     console.print(Panel(
-        "[bold]MicrodyneHunter v2 — Daily Pipeline[/bold]\n"
+        "[bold]MicrodyneHunter v2 — Daily Cycle[/bold]\n"
         f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
-        f"Target: {DAILY_LEAD_TARGET} leads/day",
+        f"Limits: {config.DAILY_EMAIL_LIMIT} emails, {config.DAILY_FORM_LIMIT} forms per day",
         style="bold green",
     ))
 
-    # Step 1: Scrape
-    raw_leads = step_scrape()
+    server.agent_state["agent_loop_running"] = True
+    server.agent_loop_thread(trigger="cli")
 
-    # Step 2: Qualify
-    qualified = step_qualify(raw_leads)
-
-    # Step 3: Store
-    inserted, skipped = step_store(qualified)
-
-    # Step 4: Send emails
-    emails_sent = step_email()
-
-    # Step 5: Fill forms
-    form_stats = step_forms()
-
-    # Step 6: Follow-ups
-    followups_sent = step_followup()
-
-    # Check if it's report day
-    today = datetime.now(timezone.utc).strftime("%A").lower()
-    if today == WEEKLY_REPORT_DAY:
+    if datetime.now(timezone.utc).strftime("%A").lower() == WEEKLY_REPORT_DAY:
         step_report()
 
-    # Daily summary
-    elapsed = time.time() - start
-    stats = {
-        "leads_added": inserted,
-        "emails_sent": emails_sent,
-        "forms_filled": form_stats.get("success", 0),
-        "followups_sent": followups_sent,
-    }
-
+    q = get_daily_quota_status()
     console.print(Panel(
-        f"[bold green]Pipeline Complete[/bold green]\n\n"
-        f"Leads scraped:    {len(raw_leads)}\n"
-        f"Qualified:        {len(qualified)}\n"
-        f"New in database:  {inserted}\n"
-        f"Emails sent:      {emails_sent}\n"
-        f"Forms filled:     {form_stats.get('success', 0)}\n"
-        f"Follow-ups:       {followups_sent}\n"
-        f"Time:             {elapsed:.1f}s",
+        f"[bold green]Cycle Complete[/bold green]\n\n"
+        f"Emails today:     {q['emails_sent_today']}/{q['email_limit']}\n"
+        f"Forms today:      {q['forms_submitted_today']}/{q['form_limit']}\n"
+        f"Still to email:   {q['pending_email']}\n"
+        f"Forms pending:    {q['pending_form']}\n"
+        f"Time:             {time.time() - start:.1f}s",
         title="Daily Summary",
         style="green",
     ))
-
-    # Send daily summary notification
+    stats = {
+        "leads_added": server.agent_state["stats"].get("leads_stored", 0),
+        "emails_sent": q["emails_sent_today"],
+        "forms_filled": q["forms_submitted_today"],
+        "followups_sent": 0,
+    }
     send_daily_summary(stats)
-
     return stats
 
 
@@ -231,10 +199,11 @@ def show_stats():
 
 def run_scheduled():
     """Run on a daily schedule."""
+    run_at = f"{config.DAILY_RUN_HOUR:02d}:{config.DAILY_RUN_MINUTE:02d}"
     console.print("[bold]MicrodyneHunter v2 — Scheduled Mode[/bold]")
-    console.print("Pipeline will run daily at 06:00 UTC\n")
+    console.print(f"Daily cycle runs every day at {run_at} local time\n")
 
-    schedule.every().day.at("06:00").do(run_daily_pipeline)
+    schedule.every().day.at(run_at).do(run_daily_pipeline)
 
     # Also schedule weekly report on Sundays
     schedule.every().sunday.at("20:00").do(step_report)

@@ -66,18 +66,21 @@ FLOWLOCK = MICRODYNE
 # SCRAPING SETTINGS
 # ═══════════════════════════════════════════════════════════════
 
-DAILY_LEAD_TARGET = int(os.getenv("DAILY_LEAD_TARGET", "120"))
+# Max new leads stored per extraction run. Extraction only runs when no
+# un-emailed and no un-submitted leads are left in the database.
+DAILY_LEAD_TARGET = int(os.getenv("DAILY_LEAD_TARGET", "50"))
 
-# Target buyer types — companies likely to outsource CNC turning job work
+# Target buyer types — manufacturers that consume turned components or
+# mechanical seals and may outsource CNC turning job work.
 LEAD_TYPES = [
-    "cnc_turning_job_work_buyer",
-    "precision_turned_component_buyer",
-    "screw_nut_sleeve_manufacturer",
-    "general_engineering",
     "pump_valve_manufacturer",
-    "automotive_component_manufacturer",
-    "electrical_equipment_manufacturer",
     "hydraulic_pneumatic_manufacturer",
+    "automotive_component_manufacturer",
+    "machinery_equipment_manufacturer",
+    "process_equipment_manufacturer",
+    "electrical_equipment_manufacturer",
+    "compressor_blower_manufacturer",
+    "general_engineering",
 ]
 
 import json
@@ -97,26 +100,52 @@ else:
         "Australia", "Indonesia", "Thailand", "Vietnam", "Qatar", "Oman",
     ]
 
-# Search keywords templates (combined with country)
+# Preserved best keyword set — always searched, cannot be removed from the admin
+# panel. These target BUYERS of turned parts / mechanical seals (OEMs), not other
+# CNC job shops: searching "CNC turning job work" would return competitors.
+# The target country is appended at search time.
+BEST_SEARCH_KEYWORDS = [
+    "pump manufacturer",
+    "valve manufacturer",
+    "hydraulic cylinder manufacturer",
+    "auto components manufacturer",
+    "compressor manufacturer",
+    "gearbox manufacturer",
+    "electric motor manufacturer",
+    "agitator mixer manufacturer",
+    "process equipment manufacturer",
+    "packaging machine manufacturer",
+    "textile machinery manufacturer",
+    "agricultural machinery manufacturer",
+    "food processing machinery manufacturer",
+    "pharmaceutical machinery manufacturer",
+    "special purpose machine manufacturer",
+]
+
+
+def normalize_keyword(keyword: str) -> str:
+    return " ".join(str(keyword or "").replace("{country}", " ").split())
+
+
+def merge_keywords(extra) -> list[str]:
+    """Best set first, then any extra admin keywords (deduped, case-insensitive)."""
+    merged, seen = [], set()
+    for kw in list(BEST_SEARCH_KEYWORDS) + list(extra or []):
+        kw = normalize_keyword(kw)
+        if kw and kw.lower() not in seen:
+            seen.add(kw.lower())
+            merged.append(kw)
+    return merged
+
+
 _sk_env = os.getenv("SEARCH_KEYWORDS", "")
+_sk_extra = []
 if _sk_env:
     try:
-        SEARCH_KEYWORDS = json.loads(_sk_env)
-    except:
-        SEARCH_KEYWORDS = [k.strip() for k in _sk_env.split(",") if k.strip()]
-else:
-    SEARCH_KEYWORDS = [
-        "CNC turning job work {country}",
-        "CNC turned components manufacturer {country}",
-        "precision turning subcontractor {country}",
-        "screw machining job work {country}",
-        "turned parts supplier {country}",
-        "brass turned components manufacturer {country}",
-        "contract manufacturing CNC turning {country}",
-        "sleeve and bushing manufacturer {country}",
-        "mechanical seal manufacturer {country}",
-        "teflon bellow seal supplier {country}",
-    ]
+        _sk_extra = json.loads(_sk_env)
+    except Exception:
+        _sk_extra = [k.strip() for k in _sk_env.split(",") if k.strip()]
+SEARCH_KEYWORDS = merge_keywords(_sk_extra)
 
 # Apollo.io job titles to search
 APOLLO_JOB_TITLES = [
@@ -137,8 +166,22 @@ APOLLO_INDUSTRIES = [
 # EMAIL SETTINGS (Instantly.dev)
 # ═══════════════════════════════════════════════════════════════
 
-DAILY_EMAIL_TARGET = int(os.getenv("DAILY_EMAIL_TARGET", "40"))
-EMAILS_PER_DOMAIN = int(os.getenv("EMAILS_PER_DOMAIN", "40"))  # safe limit per sending domain
+# Strict daily outreach caps. Env vars can only LOWER these, never raise them.
+MAX_EMAILS_PER_DAY = 10
+MAX_FORMS_PER_DAY = 100
+DAILY_EMAIL_LIMIT = max(0, min(int(os.getenv("DAILY_EMAIL_LIMIT", str(MAX_EMAILS_PER_DAY))), MAX_EMAILS_PER_DAY))
+DAILY_FORM_LIMIT = max(0, min(int(os.getenv("DAILY_FORM_LIMIT", str(MAX_FORMS_PER_DAY))), MAX_FORMS_PER_DAY))
+
+# The day window used for the caps starts at this local hour (matches dashboard "today").
+BUSINESS_DAY_RESET_HOUR = 11
+
+# The server auto-runs the daily cycle once per day after this local time.
+AUTO_DAILY_RUN = os.getenv("AUTO_DAILY_RUN", "true").strip().lower() != "false"
+DAILY_RUN_HOUR = 11
+DAILY_RUN_MINUTE = 5
+
+DAILY_EMAIL_TARGET = DAILY_EMAIL_LIMIT  # legacy name
+EMAILS_PER_DOMAIN = min(int(os.getenv("EMAILS_PER_DOMAIN", "40")), DAILY_EMAIL_LIMIT)
 
 # Email subject line (editable from admin panel)
 EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "CNC Turning Job Work Partnership — Microdyne Engineering")
@@ -195,7 +238,7 @@ FOLLOWUP_SCHEDULE = {
 # FORM FILLING SETTINGS
 # ═══════════════════════════════════════════════════════════════
 
-DAILY_FORM_TARGET = 130
+DAILY_FORM_TARGET = DAILY_FORM_LIMIT  # legacy name
 
 # Contact data used when filling website forms
 FORM_FILL_DATA = {
@@ -238,7 +281,7 @@ FORM_MESSAGE_TEMPLATE = (
 # ═══════════════════════════════════════════════════════════════
 
 SCORE_THRESHOLDS = {
-    "min_qualify": int(os.getenv("MIN_QUALIFY_SCORE", "40")),  # minimum score to qualify a lead
+    "min_qualify": int(os.getenv("MIN_QUALIFY_SCORE", "60")),  # minimum score to store/contact a lead
     "high_priority": 70,      # high-priority leads
     "skip_below": 20,         # auto-skip leads below this score
 }

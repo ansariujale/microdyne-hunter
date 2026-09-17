@@ -284,22 +284,32 @@ def send_initial_emails(leads: list[dict], campaign_id: str = None) -> int:
 
     for lead in leads:
         success, reason = process_lead_email(lead, return_reason=True)
-        if not success and reason in ("sender_capacity_ended", "all_senders_at_capacity"):
+        if not success and reason in _STOP_REASONS:
+            logger.info(f"Stopping email batch: {reason}")
             break
-        if success:
+        if success and reason == "sent":
             sent += 1
 
-        if sent % 50 == 0 and sent > 0:
-            logger.info(f"Sent {sent}/{len(leads)} initial emails")
-
-    logger.info(f"Initial email batch complete: {sent} sent/recorded")
+    logger.info(f"Initial email batch complete: {sent} sent")
     return sent
 
 
+_STOP_REASONS = ("sender_capacity_ended", "all_senders_at_capacity",
+                 "daily_email_limit_reached", "quota_check_failed")
+
+
 def send_followup_emails(leads: list[dict], campaign_id: str = None) -> int:
-    """
-    Send follow-up emails using the variant engine.
-    Returns count of follow-ups sent/recorded.
-    """
-    from modules.email_queue import process_followups
-    return process_followups()
+    """Send the next follow-up stage to each due lead. Returns count actually sent."""
+    from modules.email_queue import process_lead_email
+    sent = 0
+    for lead in leads:
+        next_stage = int(lead.get("sequence_stage") or 1) + 1
+        if next_stage > 4:
+            continue
+        success, reason = process_lead_email(lead, sequence_stage=next_stage, return_reason=True)
+        if not success and reason in _STOP_REASONS:
+            logger.info(f"Stopping follow-up batch: {reason}")
+            break
+        if success and reason == "sent":
+            sent += 1
+    return sent

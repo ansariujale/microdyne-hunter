@@ -138,6 +138,15 @@
   }
   .kw-input::placeholder{color:var(--text-hint);}
   .kw-suggest{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+  .kw-locked-box{background:var(--surface-2);}
+  .kw-chip.locked{background:transparent;color:var(--text-muted);border:1px solid var(--border);padding:5px 12px 5px 10px;}
+  .kw-chip.locked svg{opacity:0.6;}
+  .limit-strip{display:grid;grid-template-columns:auto auto 1fr;gap:14px;align-items:center;padding:14px 16px;margin-bottom:18px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;}
+  @media(max-width:700px){.limit-strip{grid-template-columns:1fr 1fr;}.limit-note{grid-column:1/-1;}}
+  .limit-item{display:flex;flex-direction:column;padding-right:14px;border-right:1px solid var(--border-soft);}
+  .limit-item strong{font-size:20px;font-weight:800;color:var(--accent);line-height:1.1;font-variant-numeric:tabular-nums;}
+  .limit-item span{font-size:11px;color:var(--text-dim);}
+  .limit-note{font-size:11.5px;color:var(--text-dim);line-height:1.5;}
   .kw-suggest-chip{
     padding:5px 11px;border:1px dashed var(--border);border-radius:999px;font-size:11.5px;
     color:var(--text-dim);background:transparent;cursor:pointer;transition:all 0.15s;
@@ -178,7 +187,7 @@
 <body>
 
 <div class="header">
-  <img src="/images/logo.svg" alt="Microdyne">
+  <img src="/images/logo-mark.png" alt="Microdyne">
   <h1>Admin Panel <span>Microdyne Engineering — Sales Agent</span></h1>
   <div class="header-right">
     <a href="/" class="btn-back">← Dashboard</a>
@@ -326,26 +335,34 @@
     <!-- SCRAPING + KEYWORDS -->
     <div class="card" id="sec-scraping">
       <h3><span class="ic">🎯</span> Scraping &amp; Targeting Keywords</h3>
-      <div class="card-desc">What the agent searches for, and which countries it targets</div>
+      <div class="card-desc">New leads are extracted only when every existing lead has been emailed and had its form submitted</div>
       <div class="settings-grid">
         <div class="setting-group">
-          <div class="setting-label">Daily Lead Target</div>
-          <input class="input" id="leadTarget" value="120" type="number">
+          <div class="setting-label">Leads per Extraction</div>
+          <input class="input" id="leadTarget" value="50" type="number" min="1">
+          <div class="hint">Max top-quality leads stored each time the queue runs empty</div>
         </div>
         <div class="setting-group">
-          <div class="setting-label">Min Score to Qualify</div>
-          <input class="input" id="minScore" value="40" type="number">
+          <div class="setting-label">Min Quality Score</div>
+          <input class="input" id="minScore" value="60" type="number" min="0" max="100">
+          <div class="hint">Leads scoring below this are never stored or contacted</div>
         </div>
       </div>
 
       <div class="setting-group">
-        <div class="setting-label">Search Keywords</div>
+        <div class="setting-label">Preserved Keyword Set <span class="badge badge-safe" style="margin-left:6px;">Always searched</span></div>
+        <div class="kw-box kw-locked-box" id="kwBestBox"></div>
+        <div class="hint">These target manufacturers that buy turned parts and mechanical seals — not other CNC job shops. They can't be removed.</div>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-label">Additional Keywords</div>
         <div class="kw-box" id="kwBox" onclick="document.getElementById('kwInput').focus()">
           <input class="kw-input" id="kwInput" placeholder="Type a keyword and press Enter…"
                  onkeydown="handleKwKey(event)">
         </div>
-        <div class="hint">Each keyword is combined with a target country when scraping, e.g. "CNC turning job work India".</div>
-        <span class="kw-suggest-label">Suggested for CNC turning &amp; mechanical seals</span>
+        <div class="hint">The target country is added automatically, e.g. "ball valve manufacturer India".</div>
+        <span class="kw-suggest-label">Suggested additions</span>
         <div class="kw-suggest" id="kwSuggest"></div>
       </div>
 
@@ -361,10 +378,16 @@
     <div class="card" id="sec-outreach">
       <h3><span class="ic">📤</span> Email Outreach Configuration</h3>
       <div class="card-desc">Volume limits and sending accounts, plus auto-optimization thresholds</div>
+      <div class="limit-strip">
+        <div class="limit-item"><strong id="limitEmails">10</strong><span>emails per day, max</span></div>
+        <div class="limit-item"><strong id="limitForms">100</strong><span>form submissions per day, max</span></div>
+        <div class="limit-note">Hard limits enforced on every send — the agent, dashboard buttons, and follow-ups all share them. Leads not reached today are continued the next day.</div>
+      </div>
       <div class="settings-grid">
         <div class="setting-group">
-          <div class="setting-label">Emails per Domain per Day</div>
-          <input class="input" id="emailsPerDomain" value="40" type="number">
+          <div class="setting-label">Emails per Sending Account per Day</div>
+          <input class="input" id="emailsPerDomain" value="10" type="number">
+          <div class="hint">Never exceeds the daily email limit above</div>
         </div>
         <div class="setting-group">
           <div class="setting-label">Pause Country After (leads with 0 closes)</div>
@@ -457,23 +480,45 @@
 const TOKEN = sessionStorage.getItem('admin_token');
 if(!TOKEN) window.location.href = '/admin';
 
-// ── Suggested keywords for CNC turning job-work + mechanical seals outreach ──
+// Preserved set comes from the server (config.BEST_SEARCH_KEYWORDS); this copy is only a fallback.
+let bestKeywords = [
+  "pump manufacturer", "valve manufacturer", "hydraulic cylinder manufacturer", "auto components manufacturer",
+  "compressor manufacturer", "gearbox manufacturer", "electric motor manufacturer", "agitator mixer manufacturer",
+  "process equipment manufacturer", "packaging machine manufacturer", "textile machinery manufacturer",
+  "agricultural machinery manufacturer", "food processing machinery manufacturer",
+  "pharmaceutical machinery manufacturer", "special purpose machine manufacturer",
+];
+
+// Narrower buyer segments worth adding once the preserved set is exhausted.
 const SUGGESTED_KEYWORDS = [
-  "CNC turning job work",
-  "CNC turned components manufacturer",
-  "precision turning subcontractor",
-  "screw machining job work",
-  "turned parts supplier",
-  "brass turned components manufacturer",
-  "contract manufacturing CNC turning",
-  "sleeve and bushing manufacturer",
-  "mechanical seal manufacturer",
-  "teflon bellow seal supplier",
-  "spring seal manufacturer",
-  "auto components turning job work",
+  "ball valve manufacturer",
+  "butterfly valve manufacturer",
+  "submersible pump manufacturer",
+  "vacuum pump manufacturer",
+  "slurry pump manufacturer",
+  "reduction gearbox manufacturer",
+  "pressure vessel manufacturer",
+  "centrifugal blower manufacturer",
+  "tractor parts manufacturer",
+  "two wheeler parts manufacturer",
 ];
 
 let keywords = [];
+
+const LOCK_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+
+function isBest(kw){ return bestKeywords.some(b => b.toLowerCase() === kw.toLowerCase()); }
+
+function renderBestKeywords(){
+  const box = document.getElementById('kwBestBox');
+  box.innerHTML = '';
+  bestKeywords.forEach(kw => {
+    const chip = document.createElement('span');
+    chip.className = 'kw-chip locked';
+    chip.innerHTML = LOCK_ICON + ' ' + escapeHtml(kw);
+    box.appendChild(chip);
+  });
+}
 
 function renderKeywords(){
   const box = document.getElementById('kwBox');
@@ -491,7 +536,7 @@ function renderKeywords(){
 function renderSuggestions(){
   const wrap = document.getElementById('kwSuggest');
   wrap.innerHTML = '';
-  SUGGESTED_KEYWORDS.filter(k => !keywords.includes(k)).forEach(k => {
+  SUGGESTED_KEYWORDS.filter(k => !keywords.includes(k) && !isBest(k)).forEach(k => {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'kw-suggest-chip';
@@ -502,7 +547,8 @@ function renderSuggestions(){
 }
 function addKeyword(kw){
   kw = kw.trim();
-  if(!kw || keywords.includes(kw)) return;
+  if(!kw || keywords.some(k => k.toLowerCase() === kw.toLowerCase())) return;
+  if(isBest(kw)){ toast('Already in the preserved keyword set'); return; }
   keywords.push(kw);
   renderKeywords();
 }
@@ -631,12 +677,12 @@ async function loadSettings(){
     if(d.supabaseKey) document.getElementById('supabaseKey').value = d.supabaseKey;
     if(d.leadTarget) document.getElementById('leadTarget').value = d.leadTarget;
     if(d.minScore) document.getElementById('minScore').value = d.minScore;
-    if(d.keywords){
-      keywords = d.keywords.split(',').map(k=>k.trim()).filter(Boolean);
-    } else {
-      keywords = SUGGESTED_KEYWORDS.slice(0, 6);
-    }
+    if(Array.isArray(d.bestKeywords) && d.bestKeywords.length) bestKeywords = d.bestKeywords;
+    keywords = (d.keywords || '').split(',').map(k=>k.trim()).filter(k => k && !isBest(k));
+    renderBestKeywords();
     renderKeywords();
+    if(d.dailyEmailLimit !== undefined) document.getElementById('limitEmails').textContent = d.dailyEmailLimit;
+    if(d.dailyFormLimit !== undefined) document.getElementById('limitForms').textContent = d.dailyFormLimit;
     if(d.countries) document.getElementById('countries').value = d.countries;
     if(d.emailsPerDomain) document.getElementById('emailsPerDomain').value = d.emailsPerDomain;
     if(d.pauseCountry) document.getElementById('pauseCountry').value = d.pauseCountry;
