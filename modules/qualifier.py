@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Lead Qualification & Scoring Module
+MicrodyneHunter v2 — Lead Qualification & Scoring Module
 Uses Claude AI to score leads and tag them with metadata.
 """
 
@@ -15,23 +15,22 @@ from config import (
 from modules.database import update_lead, is_segment_paused
 from modules.ai_client import ai_generate, is_ai_available
 
-logger = logging.getLogger("flowlockhunter.qualifier")
+logger = logging.getLogger("microdynehunter.qualifier")
 
 # ═══════════════════════════════════════════════════════════════
 # AI SCORING
 # ═══════════════════════════════════════════════════════════════
 
-SCORING_PROMPT = """You are a B2B lead scoring expert for FlowLock Overseas, a mechanical seals and CNC precision components manufacturer based in Mumbai, India.
+SCORING_PROMPT = """You are a B2B lead scoring expert for Microdyne Engineering, a Mumbai-based manufacturer offering CNC turning job work and its own line of mechanical seals.
 
-FlowLock Overseas sells:
-- Mechanical Seals (single, double, cartridge seals for pumps & rotating equipment)
-- CNC Precision Components (custom-machined parts to tight tolerances)
-- Seal Support Systems (piping plans, vessels, instrumentation)
-- Wear Parts & Spares (bushings, sleeves, thrust rings)
+Microdyne Engineering is looking for:
+- Manufacturers who outsource CNC turning / job work (screws, nuts, sleeves, bushings, custom turned parts)
+- Companies that buy precision turned components in brass, SS, or mild steel
+- Buyers of mechanical seals (cartridge, spring, bellow, teflon bellow)
 
-Target buyers: Chemical plants, pharmaceutical companies, oil & gas refineries, water treatment plants, power generation facilities, OEM pump manufacturers, food processing plants, general engineering firms.
+Target buyers: general engineering firms, pump/valve manufacturers, automotive component manufacturers, electrical/electronic equipment manufacturers, hydraulic/pneumatic component manufacturers — any manufacturer likely to subcontract turning work or buy turned components.
 
-Score this lead from 0-100 based on how likely they are to buy FlowLock Overseas's products:
+Score this lead from 0-100 based on how likely they are to outsource CNC turning job work to Microdyne Engineering or buy their mechanical seals:
 
 Company: {company_name}
 Domain: {company_domain}
@@ -42,9 +41,9 @@ Type: {lead_type}
 Description: {description}
 
 Consider:
-1. Does their business need mechanical seals or CNC precision components? (chemical plant = high, restaurant = 0)
-2. Are they in an industry that uses rotating equipment (pumps, compressors, mixers)?
-3. Is the contact person a decision-maker (Plant Manager, Maintenance Manager, Procurement Head)?
+1. Does their business need CNC turned components, job-work capacity, or mechanical seals? (component manufacturer = high, restaurant = 0)
+2. Are they a manufacturer likely to subcontract machining work when their own shop floor is at capacity?
+3. Is the contact person a decision-maker (Procurement Manager, Production Manager, Plant Manager)?
 4. Company size/relevance to industrial manufacturing
 
 Return ONLY valid JSON:
@@ -52,7 +51,7 @@ Return ONLY valid JSON:
     "score": <0-100>,
     "reason": "<one sentence why>",
     "company_size": "<small|medium|enterprise>",
-    "likely_products": ["<which FlowLock Overseas products they'd need>"],
+    "likely_products": ["<what Microdyne Engineering could offer them>"],
     "priority": "<high|medium|low>"
 }}"""
 
@@ -107,8 +106,10 @@ def score_lead_rules(lead: dict) -> dict:
 
     # Lead type scoring
     type_scores = {
-        "chemical_plant": 30, "pharmaceutical": 25, "oil_gas": 25, "water_treatment": 25,
-        "oem_pump_manufacturer": 20, "power_generation": 20, "food_processing": 15, "general_engineering": 10, "other": 0,
+        "cnc_turning_job_work_buyer": 30, "precision_turned_component_buyer": 25,
+        "screw_nut_sleeve_manufacturer": 25, "pump_valve_manufacturer": 20,
+        "automotive_component_manufacturer": 20, "electrical_equipment_manufacturer": 15,
+        "hydraulic_pneumatic_manufacturer": 15, "general_engineering": 10, "other": 0,
     }
     type_bonus = type_scores.get(lead.get("lead_type", "other"), 0)
     score += type_bonus

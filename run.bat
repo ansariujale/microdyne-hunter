@@ -1,11 +1,11 @@
 @echo off
-title FlowLock Overseas — Agent Runner
+title Microdyne Engineering — Agent Runner
 color 0B
 set PORT=8001
 
 echo.
 echo  ======================================================
-echo   FlowLockHunter v2 — Agent Runner
+echo   MicrodyneHunter v2 — Agent Runner
 echo  ======================================================
 echo.
 echo  Select what to run:

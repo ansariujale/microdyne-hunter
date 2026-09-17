@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Email Variant Generation & Scoring Engine
+MicrodyneHunter v2 — Email Variant Generation & Scoring Engine
 Generates 5 AI email variants per lead, scores them, picks the winner.
 """
 
@@ -14,7 +14,7 @@ from config import (
 )
 from modules.ai_client import ai_generate, is_ai_available
 
-logger = logging.getLogger("flowlockhunter.variants")
+logger = logging.getLogger("microdynehunter.variants")
 
 def _htmlish_to_text(s: str) -> str:
     if not s:
@@ -41,21 +41,21 @@ def _strip_tags(s: str) -> str:
 STAGE_CONFIG = {
     1: {
         "name": "initial",
-        "description": "Introduce FlowLock Overseas, highlight free consultation & sample. Show you know their industry.",
+        "description": "Introduce Microdyne Engineering, ask if they outsource CNC turning job work, offer a trial batch. Show you know their industry.",
         "word_limit": 100,
         "subject_hint": "mention their industry/equipment + value prop",
     },
     2: {
         "name": "quality",
-        "description": "Quality angle — API 682 compliance, tight tolerances, premium materials, extended MTBF. Assume no reply to email #1.",
+        "description": "Reassurance angle — offer a small trial batch so they can judge quality and turnaround themselves. No unverified claims. Assume no reply to email #1.",
         "word_limit": 80,
-        "subject_hint": "quality/performance angle",
+        "subject_hint": "trial batch / turnaround angle",
     },
     3: {
         "name": "social_proof",
-        "description": "Social proof — serving major plants across India and globally, trusted by top facilities.",
+        "description": "Credibility — manufacturing mechanical seals in Mumbai since 2021, own in-house CNC turning capacity. Keep it modest and factual.",
         "word_limit": 80,
-        "subject_hint": "social proof / scale angle",
+        "subject_hint": "credibility / experience angle",
     },
     4: {
         "name": "breakup",
@@ -72,12 +72,13 @@ STAGE_CONFIG = {
 
 VARIANT_PROMPT = """You are a senior B2B cold email copywriter. You write like a peer, not a vendor.
 
-ABOUT THE SENDER (FlowLock Overseas):
-- Mechanical seals & CNC precision components manufacturer based in Mumbai, India
-- Products: Mechanical Seals (single, double, cartridge), CNC Precision Components, Seal Support Systems, Wear Parts & Spares
-- Serves: Chemical plants, pharma, oil & gas, water treatment, power generation, OEM pump manufacturers
-- USP: Free consultation & sample — prove quality before any commitment
-- API 682 compliant, tight tolerances, premium materials, extended MTBF
+ABOUT THE SENDER (Microdyne Engineering):
+- Mumbai-based manufacturer, established 2021
+- Own line of mechanical seals (cartridge, spring, bellow, teflon bellow) plus in-house CNC turning capacity for job work
+- Job work: screws, nuts, sleeves, bushings, and custom turned parts in brass, SS, and mild steel
+- Looking for manufacturers who outsource CNC turning / job work, especially when their own shop floor is at capacity
+- USP: offer to quote a trial batch so they can judge quality and turnaround before committing to volume
+- Do NOT invent compliance certifications, tolerance specs, or capabilities not stated here (e.g. no milling — turning only)
 
 TARGET LEAD:
 - Company: {company_name}
@@ -126,9 +127,9 @@ def generate_variants(lead: dict, sequence_stage: int = 1) -> list[dict]:
         subject = _strip_tags(getattr(_cfg, "EMAIL_SUBJECT", ""))
         body = _htmlish_to_text(getattr(_cfg, "EMAIL_BODY", ""))
         if not subject:
-            subject = "Mechanical Seals & Hydraulic Fittings — FlowLock Overseas"
+            subject = "Mechanical Seals & Hydraulic Fittings — Microdyne Engineering"
         if not body:
-            body = "Dear Sir/Madam,\n\nWe are FlowLock Overseas.\n\nWould you be open to a quick call?"
+            body = "Dear Sir/Madam,\n\nWe are Microdyne Engineering.\n\nWould you be open to a quick call?"
         return [{"subject": subject[:70], "body": body, "angle": "admin"}]
 
     if not is_ai_available():
@@ -203,17 +204,17 @@ def _fallback_variants(lead: dict, stage: dict) -> list[dict]:
 
     templates = {
         "initial": [
-            {"subject": f"Mechanical seals for {country} — free sample", "body": f"We manufacture mechanical seals and CNC precision components for industrial applications. If {company} operates {lead_type} equipment in {country}, happy to send a free sample for evaluation. What are your key equipment types?", "angle": "free-sample"},
-            {"subject": f"Precision components for {country} plants", "body": f"FlowLock Overseas manufactures mechanical seals and precision parts for {country} and global markets. If you run {lead_type} operations, our quality and pricing might be worth a look. Want me to send a product catalogue for your equipment?", "angle": "catalogue"},
+            {"subject": f"CNC turning job work — {company}", "body": f"We run in-house CNC turning capacity for job work — screws, nuts, sleeves, bushings, and custom turned parts. If {company} outsources any turning work in {country}, happy to quote a trial batch. What kind of components do you typically need machined?", "angle": "trial-batch"},
+            {"subject": f"Turning job-work partner for {country}", "body": f"Microdyne Engineering is a Mumbai-based manufacturer with its own CNC turning capacity, alongside our mechanical seal line. If your {lead_type} operation ever needs extra turning capacity, we'd welcome the chance to quote a trial batch.", "angle": "capacity"},
         ],
         "quality": [
-            {"subject": f"API 682 compliant seals for {country}", "body": f"Quick follow-up — our mechanical seals are API 682 compliant with extended MTBF and tight tolerances. If seal reliability matters to {company}, a sample would speak for itself. Interested?", "angle": "quality"},
+            {"subject": f"Trial batch — CNC turning, {company}", "body": f"Quick follow-up — happy to start with a small trial batch of turned components so you can judge our quality and turnaround yourselves before committing to any volume. Worth a try?", "angle": "trial"},
         ],
         "social_proof": [
-            {"subject": f"Serving top plants across {country}", "body": f"We supply mechanical seals and CNC parts to major chemical plants, refineries, and pharma facilities. Several {lead_type} companies in {country} already source from us. Happy to share references or send a sample.", "angle": "scale"},
+            {"subject": f"Manufacturing since 2021 — Microdyne Engineering", "body": f"We've been manufacturing mechanical seals in Mumbai since 2021, and run our own CNC turning capacity for job work alongside it. We'd welcome the chance to become a turning job-work partner for {company}.", "angle": "credibility"},
         ],
         "breakup": [
-            {"subject": f"Last note — offer stays open", "body": f"No pressure at all. If {company} ever needs mechanical seals or precision components, the offer for a free consultation and sample stays open. Just reply whenever it makes sense.", "angle": "breakup"},
+            {"subject": f"Last note — offer stays open", "body": f"No pressure at all. If {company} ever needs CNC turning job work or mechanical seals, the offer to quote a trial batch stays open. Just reply whenever it makes sense.", "angle": "breakup"},
         ],
     }
 
@@ -416,7 +417,7 @@ def generate_and_pick_winner(lead: dict, sequence_stage: int = 1) -> tuple[list[
         # Ultimate fallback — simple template
         fallback = {
             "subject": f"Mechanical seals for {lead.get('country', 'your region')}",
-            "body": f"FlowLock Overseas manufactures mechanical seals and CNC precision components for industrial applications. "
+            "body": f"Microdyne Engineering manufactures mechanical seals and CNC precision components for industrial applications. "
                     f"Happy to send a free sample for {lead.get('company_name', 'your company')} "
                     f"to evaluate our quality. Interested?",
             "angle": "fallback",

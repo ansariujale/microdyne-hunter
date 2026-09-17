@@ -4,57 +4,189 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
-<title>FlowLock Overseas — Admin Login</title>
+<title>Microdyne Engineering — Admin Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;background:#0f1923;color:#e8edf2;min-height:100vh;display:flex;align-items:center;justify-content:center;}
-  .login-box{background:#162332;border:1px solid #2a4058;border-radius:16px;padding:40px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.4);}
-  .logo-area{text-align:center;margin-bottom:28px;}
-  .logo-area img{width:64px;height:64px;object-fit:contain;margin-bottom:12px;}
-  .logo-area h1{font-size:18px;font-weight:600;color:#e8edf2;}
-  .logo-area p{font-size:12px;color:#6b8299;margin-top:4px;}
-  .field{margin-bottom:18px;}
-  .field label{display:block;font-size:12px;font-weight:500;color:#9fb3c8;margin-bottom:6px;letter-spacing:0.3px;}
-  .field input{width:100%;padding:10px 14px;background:#1c2d3e;border:1px solid #2a4058;border-radius:8px;color:#e8edf2;font-size:14px;outline:none;transition:border 0.2s;}
-  .field input:focus{border-color:#3498db;}
-  .field input::placeholder{color:#4a6a84;}
-  .btn-login{width:100%;padding:11px;background:#3498db;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background 0.2s;margin-top:6px;}
-  .btn-login:hover{background:#217dbb;}
-  .error{color:#ec7063;font-size:12px;text-align:center;margin-top:12px;display:none;}
-  .back-link{text-align:center;margin-top:16px;}
-  .back-link a{color:#6b8299;font-size:12px;text-decoration:none;}
-  .back-link a:hover{color:#3498db;}
+  :root{
+    --bg-1:#0b1220;--bg-2:#0f1b30;--surface:rgba(255,255,255,0.04);--surface-solid:#121d33;
+    --border:rgba(255,255,255,0.09);--border-soft:rgba(255,255,255,0.06);
+    --text:#eef2f8;--text-muted:#9aabc4;--text-dim:#6d7fa0;
+    --accent:#4d8dff;--accent-2:#7c5cff;--accent-soft:rgba(77,141,255,0.14);
+    --danger:#ff6b6b;--success:#2ecc9a;--radius:16px;
+  }
+  html,body{height:100%;}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
+    color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:
+      radial-gradient(1100px 620px at 12% -8%, rgba(77,141,255,0.20), transparent 60%),
+      radial-gradient(900px 560px at 108% 8%, rgba(124,92,255,0.16), transparent 55%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-2));
+    background-attachment:fixed;
+    position:relative;overflow:hidden;padding:24px;
+  }
+  .grid-overlay{
+    position:fixed;inset:0;pointer-events:none;opacity:0.5;
+    background-image:linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size:44px 44px;mask-image:radial-gradient(circle at 50% 30%, black, transparent 75%);
+  }
+  .shell{
+    position:relative;z-index:1;display:grid;grid-template-columns:1.05fr 1fr;
+    width:100%;max-width:920px;min-height:560px;
+    background:var(--surface-solid);border:1px solid var(--border);border-radius:24px;
+    overflow:hidden;box-shadow:0 30px 80px -20px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.02);
+    animation:rise 0.55s cubic-bezier(.16,1,.3,1);
+  }
+  @keyframes rise{from{opacity:0;transform:translateY(14px) scale(0.99);}to{opacity:1;transform:translateY(0) scale(1);}}
+  @media (max-width:760px){.shell{grid-template-columns:1fr;max-width:420px;}.side-panel{display:none;}}
+
+  /* ── Side panel ── */
+  .side-panel{
+    position:relative;padding:44px 40px;display:flex;flex-direction:column;justify-content:space-between;
+    background:
+      radial-gradient(520px 340px at 20% 10%, rgba(124,92,255,0.35), transparent 60%),
+      linear-gradient(160deg, #14213d 0%, #0d1729 100%);
+    border-right:1px solid var(--border);
+  }
+  .side-badge{
+    display:inline-flex;align-items:center;gap:8px;width:fit-content;padding:6px 12px;border-radius:999px;
+    background:var(--accent-soft);border:1px solid rgba(77,141,255,0.3);font-size:11px;font-weight:600;
+    color:#bcd4ff;letter-spacing:0.4px;text-transform:uppercase;
+  }
+  .side-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px rgba(46,204,154,0.2);}
+  .side-panel h2{font-size:26px;font-weight:800;line-height:1.3;margin-top:22px;letter-spacing:-0.3px;}
+  .side-panel h2 span{background:linear-gradient(90deg,#8fb8ff,#c9b8ff);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .side-panel p{font-size:13.5px;color:var(--text-muted);margin-top:14px;line-height:1.7;max-width:34ch;}
+  .capability-list{margin-top:28px;display:flex;flex-direction:column;gap:12px;}
+  .capability{display:flex;align-items:center;gap:10px;font-size:12.5px;color:#c3cee2;}
+  .capability .ic{width:26px;height:26px;border-radius:8px;background:var(--surface);border:1px solid var(--border-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .side-footer{font-size:11px;color:var(--text-dim);}
+
+  /* ── Form panel ── */
+  .form-panel{padding:48px 44px;display:flex;flex-direction:column;justify-content:center;}
+  .logo-row{display:flex;align-items:center;gap:12px;margin-bottom:30px;}
+  .logo-row img{width:38px;height:38px;object-fit:contain;background:#fff;border-radius:9px;padding:4px;}
+  .logo-row .lt{display:flex;flex-direction:column;}
+  .logo-row .lt strong{font-size:14.5px;font-weight:700;letter-spacing:0.1px;}
+  .logo-row .lt span{font-size:11px;color:var(--text-dim);}
+
+  .form-panel h1{font-size:22px;font-weight:800;letter-spacing:-0.2px;}
+  .form-panel .sub{font-size:13px;color:var(--text-muted);margin-top:6px;margin-bottom:28px;}
+
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:11.5px;font-weight:600;color:var(--text-muted);margin-bottom:7px;letter-spacing:0.3px;text-transform:uppercase;}
+  .input-wrap{position:relative;}
+  .input-wrap svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:0.55;pointer-events:none;}
+  .field input{
+    width:100%;padding:12px 14px 12px 40px;background:rgba(255,255,255,0.035);
+    border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;
+    outline:none;transition:border-color 0.18s, background 0.18s, box-shadow 0.18s;
+  }
+  .field input:hover{border-color:rgba(255,255,255,0.18);}
+  .field input:focus{border-color:var(--accent);background:rgba(255,255,255,0.05);box-shadow:0 0 0 4px var(--accent-soft);}
+  .field input::placeholder{color:var(--text-dim);}
+  .toggle-pass{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;display:flex;}
+  .toggle-pass:hover{color:var(--text-muted);}
+
+  .btn-login{
+    width:100%;padding:13px;margin-top:8px;border:none;border-radius:10px;font-size:14px;font-weight:700;
+    color:#fff;cursor:pointer;letter-spacing:0.2px;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    box-shadow:0 8px 22px -8px rgba(77,141,255,0.55);
+    transition:transform 0.15s, box-shadow 0.15s, filter 0.15s;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .btn-login:hover{transform:translateY(-1px);box-shadow:0 12px 28px -8px rgba(77,141,255,0.65);filter:brightness(1.05);}
+  .btn-login:active{transform:translateY(0);}
+  .btn-login:disabled{opacity:0.7;cursor:default;transform:none;}
+  .spinner{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,0.4);border-top-color:#fff;animation:spin 0.7s linear infinite;display:none;}
+  .btn-login.loading .spinner{display:inline-block;}
+  .btn-login.loading .btn-text{display:none;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .error{
+    color:var(--danger);font-size:12.5px;text-align:center;margin-top:14px;padding:9px 12px;
+    background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.25);border-radius:8px;
+    display:none;opacity:0;transform:translateY(-4px);transition:opacity 0.2s, transform 0.2s;
+  }
+  .error.show{display:block;opacity:1;transform:translateY(0);}
+
+  .back-link{text-align:center;margin-top:22px;}
+  .back-link a{color:var(--text-dim);font-size:12.5px;text-decoration:none;transition:color 0.15s;}
+  .back-link a:hover{color:var(--accent);}
 </style>
 </head>
 <body>
-<div class="login-box">
-  <div class="logo-area">
-    <img src="/images/logo.png" alt="FlowLock Overseas">
-    <h1>Admin Panel</h1>
-    <p>FlowLock Overseas — FlowLockHunter v2</p>
+<div class="grid-overlay"></div>
+
+<div class="shell">
+  <div class="side-panel">
+    <div>
+      <div class="side-badge"><span class="dot"></span> System Online</div>
+      <h2>Run outreach like<br><span>a precision shop.</span></h2>
+      <p>Sign in to manage leads, email campaigns, and job-work outreach for Microdyne Engineering — CNC turning &amp; mechanical seals.</p>
+      <div class="capability-list">
+        <div class="capability"><span class="ic">⚙</span> CNC turning &amp; job-work pipeline</div>
+        <div class="capability"><span class="ic">✉</span> Automated outreach &amp; follow-ups</div>
+        <div class="capability"><span class="ic">◎</span> Live lead scoring &amp; targeting</div>
+      </div>
+    </div>
+    <div class="side-footer">Microdyne Engineering — Mumbai, India · Est. 2021</div>
   </div>
-  <form onsubmit="doLogin(event)">
-    <div class="field">
-      <label>Username</label>
-      <input type="text" id="username" placeholder="Enter username" autocomplete="off" required>
+
+  <div class="form-panel">
+    <div class="logo-row">
+      <img src="/images/logo.svg" alt="Microdyne Engineering">
+      <div class="lt"><strong>Microdyne Engineering</strong><span>Sales Agent Console</span></div>
     </div>
-    <div class="field">
-      <label>Password</label>
-      <input type="password" id="password" placeholder="Enter password" required>
-    </div>
-    <button type="submit" class="btn-login">Login</button>
-  </form>
-  <div class="error" id="errorMsg">Invalid username or password</div>
-  <div class="back-link"><a href="/">&larr; Back to Dashboard</a></div>
+    <h1>Welcome back</h1>
+    <div class="sub">Sign in to the admin panel to continue</div>
+
+    <form onsubmit="doLogin(event)" autocomplete="off">
+      <div class="field">
+        <label>Username</label>
+        <div class="input-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input type="text" id="username" placeholder="Enter username" autocomplete="off" required>
+        </div>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div class="input-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input type="password" id="password" placeholder="Enter password" required style="padding-right:40px;">
+          <button type="button" class="toggle-pass" onclick="togglePass()" aria-label="Show password" id="toggleBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <button type="submit" class="btn-login" id="loginBtn">
+        <span class="spinner"></span>
+        <span class="btn-text">Sign In</span>
+      </button>
+    </form>
+    <div class="error" id="errorMsg">Invalid username or password</div>
+    <div class="back-link"><a href="/">&larr; Back to Dashboard</a></div>
+  </div>
 </div>
 
 <script>
+function togglePass(){
+  const p = document.getElementById('password');
+  p.type = p.type === 'password' ? 'text' : 'password';
+}
+
 async function doLogin(e){
   e.preventDefault();
   const u = document.getElementById('username').value;
   const p = document.getElementById('password').value;
   const err = document.getElementById('errorMsg');
-  err.style.display='none';
+  const btn = document.getElementById('loginBtn');
+  err.classList.remove('show');
+  btn.classList.add('loading');
+  btn.disabled = true;
   try {
     const r = await fetch('/api/admin/login', {
       method:'POST',
@@ -65,14 +197,17 @@ async function doLogin(e){
     if(d.token){
       sessionStorage.setItem('admin_token', d.token);
       window.location.href = '/admin/panel';
+      return;
     } else {
       err.textContent = d.error || 'Invalid credentials';
-      err.style.display='block';
+      err.classList.add('show');
     }
   } catch(ex){
-    err.textContent = 'Connection error';
-    err.style.display='block';
+    err.textContent = 'Connection error — is the server running?';
+    err.classList.add('show');
   }
+  btn.classList.remove('loading');
+  btn.disabled = false;
 }
 </script>
 </body>

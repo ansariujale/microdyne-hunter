@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Configuration
+MicrodyneHunter v2 — Configuration
 All API keys, thresholds, and settings in one place.
 """
 
@@ -28,38 +28,39 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "H. Khorajiya")
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "M. Marediya")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # ═══════════════════════════════════════════════════════════════
-# FLOWLOCK OVERSEAS BUSINESS INFO (used in emails & form fills)
+# MICRODYNE ENGINEERING BUSINESS INFO (used in emails & form fills)
 # ═══════════════════════════════════════════════════════════════
 
-FLOWLOCK = {
-    "company_name": "FlowLock Overseas",
-    "contact_name": "H. Khorajiya",
-    "contact_email": "info@flowlockoverseas.com",
-    "sales_email": "sales@flowlockoverseas.com",
-    "website": "https://www.flowlockoverseas.com",
-    "phone": "+91-9082717763",
-    "address": "Unit 2, 1st Floor, Dawood Baug, Rani Sati Road, Mumbai 400097, Maharashtra, India",
-    "gst": "27ISYPK7898N1ZX",
+MICRODYNE = {
+    "company_name": "Microdyne Engineering",
+    "contact_name": os.getenv("CONTACT_NAME", "M. Marediya"),
+    "contact_email": "sales@microdyneengineering.com",
+    "sales_email": "sales@microdyneengineering.com",
+    "website": os.getenv("COMPANY_WEBSITE", "https://www.microdyneengineering.com"),
+    "phone": os.getenv("COMPANY_PHONE", "+91-9082121601"),
+    "address": os.getenv("COMPANY_ADDRESS", "Mumbai, Maharashtra, India"),
+    "gst": "27BWWPM3354A1ZC",
     "products": [
-        "Mechanical Seals (Cartridge, Spring, Bellow, Agitator)",
-        "Hydraulic Fittings (NPT, JIC, ORFS, BSP, Compression)",
-        "Hydraulic Couplings (Quick Release, Flat Face)",
-        "Seal Repair & Refurbishment Services",
+        "CNC Turning Job Work (screws, nuts, sleeves, bushings, custom turned parts)",
+        "Precision Turned Components — brass, SS, mild steel",
+        "Mechanical Seals (Cartridge, Spring, Bellow, Teflon Bellow, Conical Spring)",
+        "Subcontract / Contract Manufacturing Turning Capacity",
     ],
-    "materials": "SS316, Hastelloy, Alloy 20, Silicon Carbide, Tungsten Carbide, PTFE, Viton",
-    "coverage": "Global export from India — serving 50+ countries",
-    "usp": "Reliable mechanical seal solutions & hydraulic fittings — reduce maintenance costs 30-50% with expert refurbishment",
+    "materials": "Brass, SS304/SS316, Mild Steel, EN8/EN24, PTFE (Teflon), EPDM/Viton (for seals)",
+    "coverage": "Manufacturer based in Mumbai, India — established 2021",
+    "usp": "In-house CNC turning capacity available for job-work partnerships — precision turned components, screws, nuts & sleeves — backed by our own mechanical seal manufacturing since 2021",
 }
 
-# Backward-compatible alias
-ROZPER = FLOWLOCK
+# Backward-compatible aliases
+ROZPER = MICRODYNE
+FLOWLOCK = MICRODYNE
 
 # ═══════════════════════════════════════════════════════════════
 # SCRAPING SETTINGS
@@ -67,16 +68,16 @@ ROZPER = FLOWLOCK
 
 DAILY_LEAD_TARGET = int(os.getenv("DAILY_LEAD_TARGET", "120"))
 
-# Target buyer types (industrial sectors)
+# Target buyer types — companies likely to outsource CNC turning job work
 LEAD_TYPES = [
-    "chemical_plant",
-    "pharmaceutical",
-    "oil_gas",
-    "water_treatment",
-    "power_generation",
-    "oem_pump_manufacturer",
-    "food_processing",
+    "cnc_turning_job_work_buyer",
+    "precision_turned_component_buyer",
+    "screw_nut_sleeve_manufacturer",
     "general_engineering",
+    "pump_valve_manufacturer",
+    "automotive_component_manufacturer",
+    "electrical_equipment_manufacturer",
+    "hydraulic_pneumatic_manufacturer",
 ]
 
 import json
@@ -105,31 +106,31 @@ if _sk_env:
         SEARCH_KEYWORDS = [k.strip() for k in _sk_env.split(",") if k.strip()]
 else:
     SEARCH_KEYWORDS = [
-        "mechanical seal supplier {country}",
-        "hydraulic fittings wholesaler {country}",
-        "industrial seal manufacturer {country}",
-        "pump seal supplier {country}",
-        "mechanical seal distributor {country}",
-        "hydraulic tube fittings {country}",
-        "seal refurbishment service {country}",
-        "cartridge seal supplier {country}",
-        "bellow seal manufacturer {country}",
-        "hydraulic couplings supplier {country}",
+        "CNC turning job work {country}",
+        "CNC turned components manufacturer {country}",
+        "precision turning subcontractor {country}",
+        "screw machining job work {country}",
+        "turned parts supplier {country}",
+        "brass turned components manufacturer {country}",
+        "contract manufacturing CNC turning {country}",
+        "sleeve and bushing manufacturer {country}",
+        "mechanical seal manufacturer {country}",
+        "teflon bellow seal supplier {country}",
     ]
 
 # Apollo.io job titles to search
 APOLLO_JOB_TITLES = [
-    "Plant Manager", "Maintenance Manager", "Procurement Manager",
-    "Head of Maintenance", "VP Operations", "VP Procurement",
-    "Director of Engineering", "Chief Engineer",
-    "Purchase Head", "General Manager",
+    "Procurement Manager", "Purchase Head", "Sourcing Manager",
+    "Production Manager", "Manufacturing Manager", "Plant Manager",
+    "Supply Chain Manager", "Operations Head",
+    "Director of Engineering", "General Manager",
 ]
 
 # Apollo.io industry keywords
 APOLLO_INDUSTRIES = [
-    "Chemical Manufacturing", "Pharmaceutical", "Oil & Gas",
-    "Water Treatment", "Power Generation", "Industrial Manufacturing",
-    "Food Processing", "Pump Manufacturing",
+    "Industrial Machinery Manufacturing", "Automotive", "Machinery",
+    "Mechanical Or Industrial Engineering", "Electrical & Electronic Manufacturing",
+    "Industrial Automation", "Manufacturing",
 ]
 
 # ═══════════════════════════════════════════════════════════════
@@ -140,17 +141,19 @@ DAILY_EMAIL_TARGET = int(os.getenv("DAILY_EMAIL_TARGET", "40"))
 EMAILS_PER_DOMAIN = int(os.getenv("EMAILS_PER_DOMAIN", "40"))  # safe limit per sending domain
 
 # Email subject line (editable from admin panel)
-EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "Mechanical Seals & Hydraulic Fittings — FlowLock Overseas")
+EMAIL_SUBJECT = os.getenv("EMAIL_SUBJECT", "CNC Turning Job Work Partnership — Microdyne Engineering")
 
 # Email body content (editable from admin panel — supports <b>bold</b> tags)
 # NOTE: Do NOT put this in .env — multiline values break dotenv parsing
 _DEFAULT_EMAIL_BODY = (
     "Dear Sir/Madam,\n\n"
-    "We are <b>FlowLock Overseas</b>, a leading supplier of <b>mechanical seals</b> and <b>hydraulic fittings</b> from Mumbai, India.\n\n"
-    "Our product range includes <b>cartridge seals</b>, <b>spring seals</b>, <b>bellow seals</b>, agitator seals, "
-    "and hydraulic tube fittings in <b>SS316</b>, <b>Hastelloy</b>, and <b>Silicon Carbide</b>.\n\n"
-    "Would you be open to a <b>free consultation</b> to discuss your sealing requirements? "
-    "We can also send a sample for quality evaluation at no cost."
+    "I'm writing from <b>Microdyne Engineering</b>, a Mumbai-based manufacturing company. Since 2021 we've run our own "
+    "line of mechanical seals, and alongside that we operate in-house <b>CNC turning</b> capacity for job work — "
+    "screws, nuts, sleeves, bushings, and other turned components.\n\n"
+    "We're looking to partner with manufacturers who need reliable turning job-work support, especially when your own "
+    "shop floor is running at capacity. If that's something you outsource, we'd welcome the chance to quote a trial "
+    "batch and show you our quality and turnaround.\n\n"
+    "Would you be open to a short call to see if there's a fit for your production needs?"
 )
 
 _email_body_b64 = os.getenv("EMAIL_BODY_B64", "")
@@ -174,8 +177,7 @@ if _sending_emails_b64:
         SENDING_EMAILS = []
 else:
     SENDING_EMAILS = [
-        "flowlockoverseas@gmail.com",
-        "sales@flowlockoverseas.com",
+        "sales@microdyneengineering.com",
     ]
 
 # Backward-compat: domains list (derived)
@@ -183,9 +185,9 @@ SENDING_DOMAINS = list(set(e.split("@")[-1] for e in SENDING_EMAILS if "@" in e)
 
 # Follow-up sequence timing (days after initial email)
 FOLLOWUP_SCHEDULE = {
-    1: "initial",       # Day 1: Intro + USP + free consultation
-    3: "quality",       # Day 3: Quality angle — "Premium seals in SS316/SiC"
-    7: "social_proof",  # Day 7: Social proof — "Trusted by 100+ plants globally"
+    1: "initial",       # Day 1: Intro + turning job-work partnership ask
+    3: "quality",       # Day 3: Quality angle — trial batch, turnaround
+    7: "social_proof",  # Day 7: Credibility — manufacturing since 2021, own seal line
     14: "breakup",      # Day 14: Breakup — "No pressure, offer open"
 }
 
@@ -197,22 +199,21 @@ DAILY_FORM_TARGET = 130
 
 # Contact data used when filling website forms
 FORM_FILL_DATA = {
-    'name': os.getenv('FORM_NAME', 'FlowLock Overseas'),
-    'first_name': os.getenv('FORM_FIRST_NAME', 'FlowLock'),
-    'last_name': os.getenv('FORM_LAST_NAME', 'Overseas'),
-    'company': os.getenv('FORM_COMPANY', 'FlowLock Overseas'),
-    'email': os.getenv('FORM_EMAIL', 'sales@flowlockoverseas.com'),
-    'phone': os.getenv('FORM_PHONE', '+91-9082717763'),
-    'subject': os.getenv('FORM_SUBJECT', 'We are FlowLock Overseas, a leading supplier of mechanical seals and hydraulic fittings from Mumbai, India. Our product range includes cartridge seals, spring seals, bellow seals, agitator seals, and hydraulic tube fittings in SS316, Hastelloy, and Silicon Carbide. Contact us at sales@flowlockoverseas.com or call +91-9082717763 for a free consultation.').replace('\\n', '\n'),
+    'name': os.getenv('FORM_NAME', 'Microdyne Engineering'),
+    'first_name': os.getenv('FORM_FIRST_NAME', 'Microdyne'),
+    'last_name': os.getenv('FORM_LAST_NAME', 'Engineering'),
+    'company': os.getenv('FORM_COMPANY', 'Microdyne Engineering'),
+    'email': os.getenv('FORM_EMAIL', 'sales@microdyneengineering.com'),
+    'phone': os.getenv('FORM_PHONE', '+91-9082121601'),
+    'subject': os.getenv('FORM_SUBJECT', 'We are Microdyne Engineering, a Mumbai-based manufacturer offering CNC turning job work — screws, nuts, sleeves, bushings and custom turned components — alongside our own line of mechanical seals. If you outsource any turning or job work, get in touch at sales@microdyneengineering.com.').replace('\\n', '\n'),
     'message': os.getenv('FORM_MESSAGE', (
-        'We are FlowLock Overseas, a leading supplier of mechanical seals and '
-        'hydraulic fittings from Mumbai, India. We offer high-quality cartridge seals, '
-        'spring seals, bellow seals, agitator seals, and hydraulic tube fittings in '
-        'SS316, Hastelloy, Alloy 20, Silicon Carbide, and Tungsten Carbide. '
-        'We also provide seal repair and refurbishment services that can reduce '
-        'your maintenance costs by 30-50%. '
-        'Contact us at sales@flowlockoverseas.com or call +91-9082717763 '
-        'for a free consultation and sample.'
+        'We are Microdyne Engineering, a Mumbai-based manufacturer. Since 2021 we have run '
+        'our own line of mechanical seals, and alongside that we operate in-house CNC turning '
+        'capacity for job work — screws, nuts, sleeves, bushings, and other turned components '
+        'in brass, SS, and mild steel. '
+        'We are looking to partner with manufacturers who need reliable turning job-work support. '
+        'If that is something you outsource, we would welcome the chance to quote a trial batch. '
+        'Contact us at sales@microdyneengineering.com to discuss.'
     )).replace('\\n', '\n'),
 }
 
@@ -225,11 +226,10 @@ FORM_PATHS_TO_TRY = [
 
 FORM_MESSAGE_TEMPLATE = (
     "Hi, I'm {contact_name} from {company_name}. "
-    "We supply premium mechanical seals and hydraulic fittings globally from India. "
-    "Our products include cartridge seals, spring seals, bellow seals, and hydraulic fittings "
-    "in materials like SS316, Hastelloy, and Silicon Carbide. "
-    "Would you be interested in a free consultation or sample to evaluate our quality? "
-    "Happy to share our product catalog — just let me know your requirements. "
+    "We're a Mumbai-based manufacturer offering CNC turning job work — screws, nuts, sleeves, "
+    "bushings, and custom turned components — alongside our own mechanical seal manufacturing. "
+    "If you outsource any turning or job work, we'd welcome the chance to quote a trial batch. "
+    "Happy to share more details — just let me know your requirements. "
     "Best regards, {contact_name}"
 )
 
@@ -261,10 +261,10 @@ AUTO_EXCLUSION = {
 # ═══════════════════════════════════════════════════════════════
 
 WEEKLY_REPORT_DAY = "sunday"  # day of week to generate intelligence report
-NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "info@flowlockoverseas.com")
+NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "sales@microdyneengineering.com")
 
 # Current sending email (for testing)
-SENDER_EMAIL = os.getenv("SENDER_EMAIL", "info@flowlockoverseas.com")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", "sales@microdyneengineering.com")
 
 # ═══════════════════════════════════════════════════════════════
 # RATE LIMITS & SAFETY

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FlowLockHunter v2 — Setup Verification
+MicrodyneHunter v2 — Setup Verification
 Run this after install.bat to check everything is working.
 """
 
@@ -8,7 +8,7 @@ import sys
 
 print()
 print("=" * 56)
-print("  FlowLockHunter v2 — Setup Verification")
+print("  MicrodyneHunter v2 — Setup Verification")
 print("=" * 56)
 print()
 

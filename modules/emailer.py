@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Email Outreach Module
+MicrodyneHunter v2 — Email Outreach Module
 Sends personalized cold emails via Instantly.dev API.
 """
 
@@ -18,7 +18,7 @@ from config import (
 )
 from modules.database import update_lead, log_outreach
 
-logger = logging.getLogger("flowlockhunter.emailer")
+logger = logging.getLogger("microdynehunter.emailer")
 
 ai_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 http = httpx.Client(timeout=30)
@@ -33,48 +33,49 @@ INSTANTLY_BASE = "https://api.instantly.ai/api/v1"
 EMAIL_TEMPLATES = {
     "initial": {
         "subject": None,  # Uses EMAIL_SUBJECT from config (editable via admin panel)
-        "prompt": """Write a short, personalized cold email (max 100 words) from {sender_name} at FlowLock Overseas to {contact_name} at {company_name}.
+        "prompt": """Write a short, genuine cold email (max 100 words) from {sender_name} at Microdyne Engineering to {contact_name} at {company_name}.
 
-FlowLock Overseas manufactures mechanical seals and CNC precision components for industrial applications.
+Microdyne Engineering is a Mumbai-based manufacturer, established 2021. We run our own line of mechanical seals and operate
+in-house CNC turning capacity for job work — screws, nuts, sleeves, bushings, and other turned components in brass, SS, and mild steel.
 The lead is a {lead_type} in {country}.
-Offer: Free consultation and sample to demonstrate quality.
+Ask: are they open to outsourcing CNC turning job work to us, especially when their own shop floor is at capacity? Offer to quote a trial batch.
 
-Tone: Professional but conversational. No fluff. Direct value proposition.
-End with a clear CTA asking if they'd like a free consultation or sample for their equipment.
+Tone: Professional, plain, and honest — not salesy. No exaggerated claims about tolerances or capabilities we haven't confirmed.
+End with a simple, low-pressure question — would they be open to a short call.
 
 Return ONLY the email body (no subject line, no greeting "Hi Name" — that's added automatically).""",
     },
     "quality": {
-        "subject": "Precision-engineered seals for {region} — FlowLock Overseas",
-        "prompt": """Write a follow-up email #2 (max 80 words) from {sender_name} at FlowLock Overseas.
+        "subject": "Following up — CNC turning job work, {company}",
+        "prompt": """Write a follow-up email #2 (max 80 words) from {sender_name} at Microdyne Engineering.
 This is the SECOND email to {contact_name} at {company_name}, a {lead_type} in {country}.
-They didn't reply to the first email about free consultation and sample.
+They didn't reply to the first email about a CNC turning job-work partnership.
 
-Angle: Quality — mention API 682 compliance, tight tolerances, premium materials, extended MTBF.
-Don't repeat the first email. Add new value.
+Angle: Reassurance on turnaround and willingness to run a small trial batch first, so they can judge quality themselves before committing to volume.
+Don't repeat the first email. Keep it grounded — no unverified claims.
 Tone: Helpful, not pushy.
 
 Return ONLY the email body.""",
     },
     "social_proof": {
-        "subject": "Serving top plants across {region} — FlowLock Overseas",
-        "prompt": """Write follow-up email #3 (max 80 words) from {sender_name} at FlowLock Overseas.
+        "subject": "Manufacturing since 2021 — Microdyne Engineering",
+        "prompt": """Write follow-up email #3 (max 80 words) from {sender_name} at Microdyne Engineering.
 Third email to {contact_name} at {company_name}, a {lead_type} in {country}.
 No reply to 2 previous emails.
 
-Angle: Social proof — mention FlowLock Overseas serves major chemical plants, refineries, and pharma facilities across India and globally.
-Make them feel they're missing out on a reliable manufacturing partner.
-Tone: Confident but not arrogant.
+Angle: Credibility — Microdyne Engineering has manufactured mechanical seals in Mumbai since 2021, and runs its own CNC turning capacity for job work.
+Keep it modest and factual, not boastful.
+Tone: Confident but understated.
 
 Return ONLY the email body.""",
     },
     "breakup": {
-        "subject": "Last note from FlowLock Overseas — offer stays open, {contact_name}",
-        "prompt": """Write a final breakup email #4 (max 60 words) from {sender_name} at FlowLock Overseas.
+        "subject": "Last note from Microdyne Engineering — offer stays open, {contact_name}",
+        "prompt": """Write a final breakup email #4 (max 60 words) from {sender_name} at Microdyne Engineering.
 Fourth and last email to {contact_name} at {company_name}.
 No reply to 3 previous emails.
 
-Angle: Breakup — no pressure, door stays open, wish them well.
+Angle: Breakup — no pressure, door stays open for CNC turning job work whenever it suits them, wish them well.
 Short and graceful. Make them feel respected, not spammed.
 
 Return ONLY the email body.""",
@@ -137,20 +138,19 @@ def _fallback_body(lead: dict, stage: str) -> str:
     bodies = {
         "initial": admin_body,
         "quality": (
-            f"Quick follow-up — FlowLock Overseas maintains API 682 compliance and tight "
-            f"tolerances on all our mechanical seals and CNC components.\n\n"
-            f"Happy to send a sample if you'd like to verify our quality. "
-            f"What are your main equipment types?"
+            f"Quick follow-up — if you outsource any CNC turning job work, we'd be glad to start "
+            f"with a small trial batch so you can judge our quality and turnaround before committing to volume.\n\n"
+            f"What kind of turned components does {lead.get('company_name', 'your team')} typically need?"
         ),
         "social_proof": (
-            f"FlowLock Overseas currently serves major chemical plants, refineries, "
-            f"and pharmaceutical facilities across India and globally.\n\n"
-            f"We'd love to add {lead.get('company_name', 'your company')} to our client network. "
-            f"Free consultation and sample available — interested?"
+            f"Microdyne Engineering has been manufacturing mechanical seals in Mumbai since 2021, "
+            f"and we run our own in-house CNC turning capacity for job work.\n\n"
+            f"We'd welcome the chance to become a reliable turning job-work partner for "
+            f"{lead.get('company_name', 'your team')} — happy to quote a trial batch if useful."
         ),
         "breakup": (
             f"This is my last note — I understand timing might not be right. "
-            f"If you ever need mechanical seals or precision components, the offer for a free consultation and sample stays open.\n\n"
+            f"If you ever need CNC turning job work or mechanical seals, the offer to quote a trial batch stays open.\n\n"
             f"Wishing you all the best."
         ),
     }

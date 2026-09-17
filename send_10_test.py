@@ -56,14 +56,14 @@ def generate_email(lead):
 
 I came across {company} and noticed you're in the industrial/manufacturing space{' in ' + country if country else ''}.
 
-We are FlowLock Overseas, a Mumbai-based manufacturer of precision mechanical seals and CNC machined components. We offer high-quality cartridge seals, spring seals, and bellow seals in SS316, Hastelloy, and Silicon Carbide.
+We are Microdyne Engineering, a Mumbai-based manufacturer of precision mechanical seals and CNC machined components. We offer high-quality cartridge seals, spring seals, and bellow seals in SS316, Hastelloy, and Silicon Carbide.
 
 Would you be open to a free consultation or sample to evaluate our quality?
 
 Best regards,
 Shohail Maredia
-FlowLock Overseas
-https://www.flowlockoverseas.com"""
+Microdyne Engineering
+https://www.microdyneengineering.com"""
 
     return subject, body
 
@@ -158,7 +158,7 @@ def process_lead(lead, index, total):
 
 def main():
     print("=" * 60)
-    print("FlowLockHunter v2 — Send 10 Test Emails")
+    print("MicrodyneHunter v2 — Send 10 Test Emails")
     print(f"From: {SMTP_FROM_NAME} <{SMTP_USER}>")
     print("=" * 60)
 

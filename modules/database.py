@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Database Module (Lightweight)
+MicrodyneHunter v2 — Database Module (Lightweight)
 Uses httpx to call Supabase REST API directly — no heavy SDK needed.
 """
 
@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from config import SUPABASE_URL, SUPABASE_KEY
 
-logger = logging.getLogger("flowlockhunter.db")
+logger = logging.getLogger("microdynehunter.db")
 
 # ═══════════════════════════════════════════════════════════════
 # SUPABASE REST CLIENT (lightweight, no SDK)

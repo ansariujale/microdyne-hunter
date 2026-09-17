@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
-<title>FlowLockHunter v2 — Command Center</title>
+<title>MicrodyneHunter v2 — Command Center</title>
 <script>document.documentElement.setAttribute('data-theme',localStorage.getItem('mh-theme')||'dark');</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
-  /* ═══ Dark Theme (default) — FlowLock Overseas blue palette ═══ */
+  /* ═══ Dark Theme (default) — Microdyne Engineering blue palette ═══ */
   :root,[data-theme="dark"]{
     --bg:#0f1923;--surface:#162332;--surface2:#1c2d3e;--surface3:#23374a;
     --border:#2a4058;--border-light:#34506a;
@@ -32,7 +32,7 @@
     --nav-text:#7a9bb5;--nav-text-active:#e8edf2;--nav-dim:#6b8299;--nav-label:#4a6a84;
     --sidebar-bg:transparent;--sidebar-border:var(--border);--header-bg:rgba(15,25,35,0.88);
   }
-  /* ═══ Light Theme — FlowLock Overseas style: clean white + blue ═══ */
+  /* ═══ Light Theme — Microdyne Engineering style: clean white + blue ═══ */
   [data-theme="light"]{
     --bg:#f8f9fa;--surface:#ffffff;--surface2:#edf2f7;--surface3:#dde6ef;
     --border:#c8d6e0;--border-light:#b0c4d4;
@@ -447,7 +447,7 @@
   }
 
   .ai-robot-icon:hover {
-    color: #3498db; /* FlowLock Primary Blue */
+    color: #3498db; /* Microdyne Primary Blue */
     animation: robot-float 2s ease-in-out infinite;
   }
 
@@ -617,8 +617,8 @@
 
 <!-- HEADER -->
 <div class="header">
-  <div class="logo" style="background:#fff;border-color:#3498db;padding:2px;"><img src="images/logo.png" alt="FlowLock Hunter" style="width:24px;height:24px;object-fit:contain;"></div>
-  <div class="h-title">FlowLock Hunter <span>Command Center v2.0</span></div>
+  <div class="logo" style="background:#fff;border-color:#3498db;padding:2px;"><img src="images/logo.svg" alt="Microdyne Hunter" style="width:24px;height:24px;object-fit:contain;"></div>
+  <div class="h-title">Microdyne Hunter <span>Command Center v2.0</span></div>
   <div class="h-right">
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark theme">
       <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -804,13 +804,13 @@
         <select class="input" id="filterCity" onchange="filterLeads()"><option value="">All Cities</option></select>
         <select class="input" id="filterType" onchange="filterLeads()">
           <option value="">All Types</option>
-          <option value="chemical_plant">Chemical Plant</option>
-          <option value="pharmaceutical">Pharmaceutical</option>
-          <option value="oil_gas">Oil & Gas</option>
-          <option value="water_treatment">Water Treatment</option>
-          <option value="power_generation">Power Generation</option>
-          <option value="oem_pump_manufacturer">OEM Pump Manufacturer</option>
-          <option value="food_processing">Food Processing</option>
+          <option value="cnc_turning_job_work_buyer">CNC Turning Job Work</option>
+          <option value="precision_turned_component_buyer">Precision Turned Components</option>
+          <option value="screw_nut_sleeve_manufacturer">Screw/Nut/Sleeve Mfr</option>
+          <option value="pump_valve_manufacturer">Pump/Valve Manufacturer</option>
+          <option value="automotive_component_manufacturer">Automotive Components</option>
+          <option value="electrical_equipment_manufacturer">Electrical Equipment</option>
+          <option value="hydraulic_pneumatic_manufacturer">Hydraulic/Pneumatic</option>
           <option value="general_engineering">General Engineering</option>
         </select>
         <select class="input" id="filterSource" onchange="filterLeads()">
@@ -1052,13 +1052,13 @@
             <label style="font-size:11px;color:var(--text-muted);white-space:nowrap;">Type:</label>
             <select id="rptFilterType" onchange="loadReportData()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;min-width:100px;">
               <option value="">All Types</option>
-              <option value="chemical_plant">Chemical Plant</option>
-              <option value="pharmaceutical">Pharmaceutical</option>
-              <option value="oil_gas">Oil & Gas</option>
-              <option value="water_treatment">Water Treatment</option>
-              <option value="power_generation">Power Generation</option>
-              <option value="oem_pump_manufacturer">OEM Pump</option>
-              <option value="food_processing">Food Processing</option>
+              <option value="cnc_turning_job_work_buyer">CNC Turning Job Work</option>
+              <option value="precision_turned_component_buyer">Turned Components</option>
+              <option value="screw_nut_sleeve_manufacturer">Screw/Nut/Sleeve</option>
+              <option value="pump_valve_manufacturer">Pump/Valve Mfr</option>
+              <option value="automotive_component_manufacturer">Automotive</option>
+              <option value="electrical_equipment_manufacturer">Electrical Equip.</option>
+              <option value="hydraulic_pneumatic_manufacturer">Hydraulic/Pneumatic</option>
               <option value="general_engineering">General Engineering</option>
             </select>
           </div>
@@ -1288,7 +1288,7 @@
           </div>
           <div class="setting-group">
             <div class="setting-label">Sender Email</div>
-            <input class="input" style="width:100%" id="settingSenderEmail" placeholder="sales@flowlockoverseas.com" type="email">
+            <input class="input" style="width:100%" id="settingSenderEmail" placeholder="sales@microdyneengineering.com" type="email">
           </div>
         </div>
         <button class="btn btn-green" onclick="saveApiKeys()" style="margin-top:12px;">Save API Keys</button>
@@ -1304,7 +1304,7 @@
           </div>
           <div class="setting-group">
             <div class="setting-label">Search Keywords (comma-separated)</div>
-            <input class="input" style="width:100%" value="mechanical seals, industrial seals, CNC precision components, pump seals, cartridge seals, industrial equipment manufacturer, seal supplier, chemical plant seals, pharmaceutical seals, OEM components" id="settingKeywords">
+            <input class="input" style="width:100%" value="CNC turning job work, CNC turned components manufacturer, precision turning subcontractor, screw machining job work, turned parts supplier, brass turned components manufacturer, contract manufacturing CNC turning, sleeve and bushing manufacturer, mechanical seal manufacturer, teflon bellow seal supplier" id="settingKeywords">
           </div>
           <div class="setting-group">
             <div class="setting-label">Target Countries (comma-separated)</div>
@@ -1323,8 +1323,8 @@
           </div>
           <div class="setting-group">
             <div class="setting-label">Sending Domains</div>
-            <textarea class="input" style="width:100%;height:60px;resize:vertical;" id="settingDomains">sales@flowlockoverseas.com
-info@flowlockoverseas.com</textarea>
+            <textarea class="input" style="width:100%;height:60px;resize:vertical;" id="settingDomains">sales@microdyneengineering.com
+info@microdyneengineering.com</textarea>
           </div>
         </div>
       </div>
@@ -1333,12 +1333,12 @@ info@flowlockoverseas.com</textarea>
         <h3>Form Submission Content</h3>
         <div class="setting-group">
           <div class="setting-label">Form message sent to leads (Name, Contact, Subject & Message — all in one)</div>
-          <textarea class="input" style="width:100%;height:140px;resize:vertical;font-size:13px;line-height:1.6;" id="settingFormMessage">Name: FlowLock Overseas
+          <textarea class="input" style="width:100%;height:140px;resize:vertical;font-size:13px;line-height:1.6;" id="settingFormMessage">Name: Microdyne Engineering
 Contact: +91-9082121601
-Email: sales@flowlockoverseas.com
-Subject: Manufacturer of Mechanical Seals, CNC Components & Precision Turned Parts
+Email: sales@microdyneengineering.com
+Subject: CNC Turning Job Work Partnership — Microdyne Engineering
 
-We are FlowLock Overseas, a Mumbai-based manufacturer specializing in mechanical seals, CNC machined components, and precision turned parts. Our product range includes cartridge seals, single & multi spring seals, bellow seals (rubber, metal, PTFE), pump seals, and agitator seals — manufactured in SS316, SS304, Hastelloy, Silicon Carbide, Tungsten Carbide, Carbon, PTFE, and Viton. We also offer CNC machines and precision turned parts for industrial applications. Our seal repair and refurbishment services help reduce maintenance costs significantly. Contact us at sales@flowlockoverseas.com or call +91-9082121601 for a free consultation and sample.</textarea>
+We are Microdyne Engineering, a Mumbai-based manufacturer. Since 2021 we have run our own line of mechanical seals, and alongside that we operate in-house CNC turning capacity for job work — screws, nuts, sleeves, bushings, and other turned components in brass, SS, and mild steel. We are looking to partner with manufacturers who need reliable turning job-work support. If that is something you outsource, we would welcome the chance to quote a trial batch. Contact us at sales@microdyneengineering.com or call +91-9082121601 to discuss.</textarea>
         </div>
         <button class="btn btn-green" onclick="saveFormMessage()" style="margin-top:12px;">Save Form Content</button>
         <span id="formMsgSaveStatus" style="margin-left:12px;font-size:12px;color:var(--green);display:none;">Saved!</span>
@@ -1425,7 +1425,7 @@ We are FlowLock Overseas, a Mumbai-based manufacturer specializing in mechanical
     </div>
     <div class="chat-header-info">
       <div class="chat-header-title">
-        <span>FlowLockHunter Agent</span>
+        <span>MicrodyneHunter Agent</span>
         <span class="online-dot" id="chatOnlineDot"></span>
       </div>
       <div class="chat-header-sub" id="chatHeaderSub">AI-powered command center</div>
@@ -1653,9 +1653,9 @@ let pollInterval = null;
 // ═══════════════════════════════════════════════════════════════
 const DEMO = {
   countries: ['UAE','UK','US','India','Germany','France','Netherlands','Nigeria','South Africa','Kenya','Saudi Arabia','Singapore'],
-  types: ['chemical_plant','pharmaceutical','oil_gas','water_treatment','power_generation','oem_pump_manufacturer','food_processing','general_engineering'],
+  types: ['cnc_turning_job_work_buyer','precision_turned_component_buyer','screw_nut_sleeve_manufacturer','pump_valve_manufacturer','automotive_component_manufacturer','electrical_equipment_manufacturer','hydraulic_pneumatic_manufacturer','general_engineering'],
   sources: ['apollo','google_search','google_maps','directory','conference'],
-  domains: ['gmail.com','flowlockoverseas.com'],
+  domains: ['gmail.com','microdyneengineering.com'],
   names: ['John Smith','Ahmed Al-Mansoor','Priya Sharma','Carlos Garcia','Li Wei','Sarah Johnson','Mohammed Ali','Elena Petrova','David Kim','Fatima Hassan','James Wilson','Anita Desai','Robert Chen','Maria Lopez','Yusuf Ibrahim'],
   companies: ['SealTech Industries','PumpGuard Inc','GlobalSeals Ltd','PrecisionCNC Co','SealMaster','OmniSeal','RapidParts','FlowControl Systems','HydroSeal Pro','IntelliPump','SealNet','TrunkLine Engineering','SealMatrix','DigiMach','PureSeal','CNCware','PartsEdge','WaveSeal','LinkParts','PrimeSeal'],
 };
@@ -2368,7 +2368,7 @@ function exportLeads(){
   const blob = new Blob([csv],{type:'text/csv'});
   const a = document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='flowlockhunter_leads_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.download='microdynehunter_leads_'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
 }
 
@@ -3270,7 +3270,7 @@ function downloadReportCSV(){
   const blob = new Blob([csv], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'flowlock_report_' + new Date().toISOString().split('T')[0] + '.csv';
+  a.download = 'microdyne_report_' + new Date().toISOString().split('T')[0] + '.csv';
   a.click();
 }
 
@@ -3302,7 +3302,7 @@ function downloadReportPDF(){
     '</tr>'
   ).join('');
 
-  const html = '<!DOCTYPE html><html><head><title>FlowLock Overseas — Pipeline Report</title>' +
+  const html = '<!DOCTYPE html><html><head><title>Microdyne Engineering — Pipeline Report</title>' +
     '<style>body{font-family:Arial,sans-serif;padding:40px;color:#2c3e50;} ' +
     'h1{color:#3498db;font-size:22px;margin-bottom:4px;} ' +
     '.sub{color:#7f8c8d;font-size:13px;margin-bottom:24px;} ' +
@@ -3313,7 +3313,7 @@ function downloadReportPDF(){
     'table{width:100%;border-collapse:collapse;margin-top:16px;} ' +
     'th{background:#3498db;color:#fff;padding:8px;font-size:11px;text-align:left;border:1px solid #217dbb;} ' +
     '</style></head><body>' +
-    '<h1>FlowLock Overseas — Pipeline Report</h1>' +
+    '<h1>Microdyne Engineering — Pipeline Report</h1>' +
     '<div class="sub">Generated on ' + dateStr + '</div>' +
     '<div class="summary">' +
     '<div class="summary-item"><div class="val">'+totalLeads+'</div><div class="lbl">Total Leads</div></div>' +
@@ -3324,7 +3324,7 @@ function downloadReportPDF(){
     '<table><thead><tr>' +
     '<th>#</th><th>Company</th><th>Email</th><th>Country</th><th>State</th><th>City</th><th>Type</th><th>Email Sent</th><th>Opened</th><th>Form Filled</th><th>Replied</th>' +
     '</tr></thead><tbody>' + tableRows + '</tbody></table>' +
-    '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">FlowLock Overseas | FlowLockHunter v2 | ' + dateStr + '</div>' +
+    '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">Microdyne Engineering | MicrodyneHunter v2 | ' + dateStr + '</div>' +
     '</body></html>';
 
   const win = window.open('','_blank');
@@ -4589,7 +4589,7 @@ async function sendChat(){
 
   // Notify user if chat panel is not visible or page is not focused
   if(!document.hasFocus() || !chatOpen){
-    _notifyUser('FlowLockHunter Agent', reply.replace(/<[^>]*>/g,'').substring(0,120));
+    _notifyUser('MicrodyneHunter Agent', reply.replace(/<[^>]*>/g,'').substring(0,120));
     // Show unread badge on FAB
     if(!chatOpen){
       const fab = document.getElementById('chatFab');
@@ -4754,7 +4754,7 @@ function chatGeneratePDF(btn){
           '</tr>'
         ).join('');
 
-        const html = '<!DOCTYPE html><html><head><title>FlowLock Overseas - Report</title>'+
+        const html = '<!DOCTYPE html><html><head><title>Microdyne Engineering - Report</title>'+
           '<style>body{font-family:Segoe UI,Arial,sans-serif;padding:40px;color:#2c3e50;}'+
           'h1{color:#3498db;font-size:22px;margin-bottom:4px;}'+
           '.sub{color:#7f8c8d;font-size:13px;margin-bottom:24px;}'+
@@ -4763,7 +4763,7 @@ function chatGeneratePDF(btn){
           '.s-item .v{font-size:22px;font-weight:700;color:#3498db;}.s-item .l{font-size:10px;color:#7f8c8d;margin-top:2px;}'+
           'table{width:100%;border-collapse:collapse;margin-top:16px;}'+
           'th{background:#3498db;color:#fff;padding:8px;font-size:11px;text-align:left;border:1px solid #217dbb;}</style></head><body>'+
-          '<h1>FlowLock Overseas - Pipeline Report</h1>'+
+          '<h1>Microdyne Engineering - Pipeline Report</h1>'+
           '<div class="sub">Generated on '+dateStr+'</div>'+
           '<div class="summary">'+
           '<div class="s-item"><div class="v">'+data.total+'</div><div class="l">Total Leads</div></div>'+
@@ -4773,7 +4773,7 @@ function chatGeneratePDF(btn){
           '</div>'+
           '<table><thead><tr><th>#</th><th>Company</th><th>Email</th><th>Country</th><th>Score</th><th>Email</th><th>Opened</th><th>Form</th><th>Replied</th></tr></thead>'+
           '<tbody>'+tableRows+'</tbody></table>'+
-          '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">FlowLock Overseas | FlowLockHunter v2 | '+dateStr+'</div>'+
+          '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">Microdyne Engineering | MicrodyneHunter v2 | '+dateStr+'</div>'+
           '</body></html>';
 
         const win = window.open('','_blank');
@@ -4955,7 +4955,7 @@ To find new leads, the agent scrapes from multiple sources:
 <div class="chat-data-card">
 <div class="chat-data-card-title">SENDING DOMAINS</div>
 <div class="chat-data-row"><span class="chat-data-label">gmail.com</span><span class="chat-data-value green">Active</span></div>
-<div class="chat-data-row"><span class="chat-data-label">flowlock.in</span><span class="chat-data-value green">Active</span></div>
+<div class="chat-data-row"><span class="chat-data-label">microdyne.in</span><span class="chat-data-value green">Active</span></div>
 <div class="chat-data-row"><span class="chat-data-label">Total Mailboxes</span><span class="chat-data-value">16</span></div>
 <div class="chat-data-row"><span class="chat-data-label">Daily Capacity</span><span class="chat-data-value blue">~1,040 emails</span></div>
 </div>

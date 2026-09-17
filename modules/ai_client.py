@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — AI Client
+MicrodyneHunter v2 — AI Client
 Unified AI interface. Priority: OpenRouter -> Gemini -> Anthropic -> None
 """
 
@@ -7,7 +7,7 @@ import logging
 
 from config import GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY
 
-logger = logging.getLogger("flowlockhunter.ai")
+logger = logging.getLogger("microdynehunter.ai")
 
 _gemini_model = None
 _anthropic_client = None

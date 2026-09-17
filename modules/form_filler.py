@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Contact Form Filling Module
+MicrodyneHunter v2 — Contact Form Filling Module
 Uses Playwright (headless browser) to find and fill contact forms on lead websites.
 Human-like behavior with random delays, CAPTCHA detection, cookie banner dismissal.
 Cleans website URLs to base domain before processing.
@@ -21,7 +21,7 @@ from config import (
 )
 from modules.database import update_lead, log_outreach
 
-logger = logging.getLogger("flowlockhunter.formfiller")
+logger = logging.getLogger("microdynehunter.formfiller")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -726,7 +726,7 @@ async def fill_contact_form(page: Page, lead: dict) -> dict:
             'company': data['company'],
             'subject': msg,      # Use message content for subject fields
             'message': msg,      # Use same message content for message/textarea fields
-            'website': 'https://flowlockoverseas.com',
+            'website': 'https://microdyneengineering.com',
         }
 
         for field in fields:

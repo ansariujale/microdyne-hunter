@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Reply Tracker
+MicrodyneHunter v2 — Reply Tracker
 Checks Gmail inbox via IMAP for replies from leads.
 Matches sender email to leads in DB and marks them as replied.
 """
@@ -15,7 +15,7 @@ from email.header import decode_header
 
 import config
 
-logger = logging.getLogger("flowlockhunter.reply_tracker")
+logger = logging.getLogger("microdynehunter.reply_tracker")
 
 CHECK_INTERVAL = 60  # check every 1 minute
 
@@ -294,7 +294,7 @@ def check_form_replies():
     emails our form submission email, we match it as a form reply.
 
     Uses FORM_REPLY_IMAP_USER and FORM_REPLY_IMAP_PASSWORD from .env
-    (the email used in form submissions, e.g. sales@flowlockoverseas.com)
+    (the email used in form submissions, e.g. sales@microdyneengineering.com)
     """
     from modules.database import db
     from modules.events import emit_log

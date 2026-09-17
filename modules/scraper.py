@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Lead Scraping Module
+MicrodyneHunter v2 — Lead Scraping Module
 Primary source: Apify Google Maps Scraper (compass/crawler-google-places)
 Also supports: Apollo.io, DuckDuckGo/Bing fallback
 """
@@ -22,7 +22,7 @@ from modules.database import (
 )
 from modules.events import emit_log, get_country_flag
 
-logger = logging.getLogger("flowlockhunter.scraper")
+logger = logging.getLogger("microdynehunter.scraper")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -132,24 +132,24 @@ def clean_lead(raw: dict, source: str, keyword: str = "", country: str = "") -> 
 
 def classify_lead_type(company_name: str, description: str = "") -> str:
     text = (company_name + " " + description).lower()
-    if any(k in text for k in ["chemical", "petrochemical", "refinery", "chemical plant"]):
-        return "chemical_plant"
-    if any(k in text for k in ["pharma", "pharmaceutical", "drug", "biotech"]):
-        return "pharmaceutical"
-    if any(k in text for k in ["oil", "gas", "petroleum", "lng", "upstream", "downstream"]):
-        return "oil_gas"
-    if any(k in text for k in ["water treatment", "desalination", "wastewater", "water utility"]):
-        return "water_treatment"
-    if any(k in text for k in ["power plant", "power generation", "energy", "thermal", "turbine"]):
-        return "power_generation"
-    if any(k in text for k in ["pump", "oem", "pump manufacturer", "impeller", "centrifugal"]):
-        return "oem_pump_manufacturer"
-    if any(k in text for k in ["food processing", "beverage", "dairy", "brewery", "food grade"]):
-        return "food_processing"
+    if any(k in text for k in ["cnc turning", "job work", "turned components", "turned parts", "subcontract machining"]):
+        return "cnc_turning_job_work_buyer"
+    if any(k in text for k in ["precision turning", "turned component", "brass turned", "custom machined"]):
+        return "precision_turned_component_buyer"
+    if any(k in text for k in ["screw", "nut", "bolt", "sleeve", "bushing", "fastener"]):
+        return "screw_nut_sleeve_manufacturer"
+    if any(k in text for k in ["pump", "valve", "impeller", "centrifugal"]):
+        return "pump_valve_manufacturer"
+    if any(k in text for k in ["automotive", "auto component", "auto parts", "vehicle"]):
+        return "automotive_component_manufacturer"
+    if any(k in text for k in ["electrical", "electronic", "switchgear", "panel"]):
+        return "electrical_equipment_manufacturer"
+    if any(k in text for k in ["hydraulic", "pneumatic", "cylinder", "fitting"]):
+        return "hydraulic_pneumatic_manufacturer"
     if any(k in text for k in ["engineering", "machining", "cnc", "precision", "fabrication"]):
         return "general_engineering"
     if any(k in text for k in ["manufacturing", "industrial", "plant", "factory"]):
-        return "chemical_plant"
+        return "general_engineering"
     return "other"
 
 
@@ -410,18 +410,18 @@ def scrape_google_search(keyword: str, country: str, num_results: int = 50) -> l
 # MASTER SCRAPE ORCHESTRATOR
 # ═══════════════════════════════════════════════════════════════
 
-# Industrial/mechanical seal search queries for Google Maps
+# CNC turning job-work & mechanical seal search queries for Google Maps
 MAPS_SEARCH_QUERIES = [
+    "CNC turning job work",
+    "CNC turned components manufacturer",
+    "precision turning subcontractor",
+    "screw machining job work",
+    "turned parts manufacturer",
     "mechanical seal manufacturer",
-    "CNC precision machining company",
-    "industrial pump manufacturer",
-    "chemical plant",
-    "pharmaceutical manufacturing plant",
-    "oil and gas refinery",
-    "water treatment plant",
-    "power generation company",
-    "food processing plant",
-    "rotating equipment manufacturer",
+    "pump and valve manufacturer",
+    "automotive component manufacturer",
+    "electrical equipment manufacturer",
+    "general engineering works",
 ]
 
 

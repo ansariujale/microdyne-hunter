@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- FlowLockHunter v2 — Email Variants & Warmup Schema
+-- MicrodyneHunter v2 — Email Variants & Warmup Schema
 -- Run this in Supabase SQL Editor AFTER 001_schema.sql
 -- ═══════════════════════════════════════════════════════════════
 

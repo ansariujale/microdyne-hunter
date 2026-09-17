@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Intelligence & Auto-Optimization Module
+MicrodyneHunter v2 — Intelligence & Auto-Optimization Module
 Generates weekly reports, tracks segment performance, auto-excludes dead segments.
 """
 
@@ -14,7 +14,7 @@ from modules.database import (
     save_report,
 )
 
-logger = logging.getLogger("flowlockhunter.intelligence")
+logger = logging.getLogger("microdynehunter.intelligence")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -274,7 +274,7 @@ def format_report_text(report: dict) -> str:
     s = report["summary"]
     lines = [
         "=" * 60,
-        "FLOWLOCKHUNTER v2 — WEEKLY INTELLIGENCE REPORT",
+        "MICRODYNEHUNTER v2 — WEEKLY INTELLIGENCE REPORT",
         f"Generated: {report['generated_at'][:10]}",
         "=" * 60,
         "",

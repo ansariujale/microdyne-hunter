@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Email Workers (DB-Polling)
+MicrodyneHunter v2 — Email Workers (DB-Polling)
 Two independent background workers:
   1. Email Worker — polls DB for "New" leads, generates variants, sends
   2. Followup Worker — polls DB for due follow-ups, sends next in sequence
@@ -33,7 +33,7 @@ def _using_smtp() -> bool:
     return no_instantly and has_smtp
 from modules.events import emit_log
 
-logger = logging.getLogger("flowlockhunter.email_queue")
+logger = logging.getLogger("microdynehunter.email_queue")
 
 # ═══════════════════════════════════════════════════════════════
 # WORKER STATE (shared with dashboard via agent_state)
@@ -473,11 +473,30 @@ def _build_html_email(body: str, lead: dict, subject: str, sequence_stage: int, 
     import os, re
     from config import ROZPER, EMAIL_BODY, SENDER_EMAIL, SMTP_USER
 
-    company_name = ROZPER.get("company_name", "FlowLock Overseas")
-    contact_name = ROZPER.get("contact_name", "H. Khorajiya")
-    phone = ROZPER.get("phone", "+91-9082717763")
-    email_addr = (SENDER_EMAIL or SMTP_USER or ROZPER.get("contact_email") or "sales@flowlockoverseas.com")
-    website = ROZPER.get("website", "https://www.flowlockoverseas.com")
+    company_name = ROZPER.get("company_name", "Microdyne Engineering")
+    contact_name = ROZPER.get("contact_name", "M. Marediya")
+    phone = ROZPER.get("phone", "")
+    email_addr = (SENDER_EMAIL or SMTP_USER or ROZPER.get("contact_email") or "sales@microdyneengineering.com")
+    website = ROZPER.get("website", "https://www.microdyneengineering.com")
+    gst = ROZPER.get("gst", "")
+    address = ROZPER.get("address", "Mumbai, Maharashtra, India")
+
+    # Build optional fragments so the template never shows a blank/broken phone link
+    phone_tel = "+91" + "".join(ch for ch in phone if ch.isdigit()) if phone else ""
+    header_phone_html = (
+        f'<a href="tel:{phone_tel}" style="display:inline-block;padding:8px 18px;background:rgba(255,255,255,0.15);'
+        f'border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#ffffff;text-decoration:none;'
+        f'font-family:\'Segoe UI\',Roboto,Arial,sans-serif;font-size:12px;font-weight:600;">'
+        f'<img src="https://img.icons8.com/ios-filled/14/ffffff/phone.png" width="12" height="12" '
+        f'style="vertical-align:middle;margin-right:4px;" alt=""> {phone}</a>'
+    ) if phone else ""
+    sig_phone_html = (
+        f'<a href="tel:{phone_tel}" style="color:#2c3e50;text-decoration:none;font-weight:600;">'
+        f'<img src="https://img.icons8.com/ios-filled/16/2c3e50/phone.png" width="14" height="14" '
+        f'style="vertical-align:middle;margin-right:6px;" alt="">{phone}</a><br>'
+    ) if phone else ""
+    footer_meta_parts = [p for p in [address, (f"GST: {gst}" if gst else ""), phone] if p]
+    footer_meta_html = " &nbsp;&bull;&nbsp; ".join(footer_meta_parts)
 
     # Use the EXACT admin panel body content (not AI-generated)
     admin_body = getattr(__import__('config'), 'EMAIL_BODY', EMAIL_BODY)
@@ -523,7 +542,9 @@ def _build_html_email(body: str, lead: dict, subject: str, sequence_stage: int, 
     # Replace template variables
     html = html.replace("{{company_name}}", company_name)
     html = html.replace("{{contact_name}}", contact_name)
-    html = html.replace("{{phone}}", phone)
+    html = html.replace("{{header_phone_block}}", header_phone_html)
+    html = html.replace("{{sig_phone_line}}", sig_phone_html)
+    html = html.replace("{{footer_meta}}", footer_meta_html)
     html = html.replace("{{email}}", email_addr)
     html = html.replace("{{website}}", website.replace("https://", ""))
     html = html.replace("{{greeting}}", greeting_html)
@@ -553,7 +574,7 @@ def _send_or_record(to_email: str, subject: str, body: str,
     smtp_port = int(smtp_port_override or getattr(config, "SMTP_PORT", SMTP_PORT) or 587)
     smtp_user = (smtp_user_override or getattr(config, "SMTP_USER", SMTP_USER) or "").strip()
     smtp_password = (smtp_password_override or getattr(config, "SMTP_PASSWORD", SMTP_PASSWORD) or "").strip()
-    smtp_from_name = (getattr(config, "SMTP_FROM_NAME", SMTP_FROM_NAME) or "FlowLock Overseas").strip()
+    smtp_from_name = (getattr(config, "SMTP_FROM_NAME", SMTP_FROM_NAME) or "Microdyne Engineering").strip()
 
     if not (instantly_key and "your" not in instantly_key.lower()) and not (smtp_user and smtp_password and "your" not in smtp_password.lower()):
         if return_error:

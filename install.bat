@@ -1,10 +1,10 @@
 @echo off
-title FlowLockHunter v2 — Installer
+title MicrodyneHunter v2 — Installer
 color 0A
 
 echo.
 echo  ======================================================
-echo   FlowLockHunter v2 — One-Click Installer
+echo   MicrodyneHunter v2 — One-Click Installer
 echo  ======================================================
 echo.
 

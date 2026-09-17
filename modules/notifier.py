@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Notification Module
+MicrodyneHunter v2 — Notification Module
 Sends alerts for hot leads and weekly reports.
 """
 
@@ -10,7 +10,7 @@ import httpx
 
 from config import INSTANTLY_API_KEY, NOTIFICATION_EMAIL, ROZPER
 
-logger = logging.getLogger("flowlockhunter.notifier")
+logger = logging.getLogger("microdynehunter.notifier")
 
 
 def send_hot_lead_alert(lead: dict) -> bool:
@@ -35,14 +35,14 @@ def send_hot_lead_alert(lead: dict) -> bool:
 </table>
 <br>
 <p><strong>Action needed:</strong> Follow up with this lead ASAP to close the deal.</p>
-<p style="color:#888;font-size:12px;">— FlowLockHunter v2 Agent</p>"""
+<p style="color:#888;font-size:12px;">— MicrodyneHunter v2 Agent</p>"""
 
     return _send_notification(subject, body)
 
 
 def send_weekly_report_email(report_text: str) -> bool:
     """Send the weekly intelligence report via email."""
-    subject = "📊 FlowLockHunter Weekly Report"
+    subject = "📊 MicrodyneHunter Weekly Report"
     body = f"<pre style='font-family:monospace;font-size:13px;line-height:1.6;'>{report_text}</pre>"
     return _send_notification(subject, body)
 
@@ -50,14 +50,14 @@ def send_weekly_report_email(report_text: str) -> bool:
 def send_daily_summary(stats: dict) -> bool:
     """Send a brief daily summary."""
     subject = f"📈 Daily: {stats.get('leads_added', 0)} leads, {stats.get('emails_sent', 0)} emails, {stats.get('forms_filled', 0)} forms"
-    body = f"""<h3>FlowLockHunter Daily Summary</h3>
+    body = f"""<h3>MicrodyneHunter Daily Summary</h3>
 <ul>
 <li>Leads scraped: <strong>{stats.get('leads_added', 0)}</strong></li>
 <li>Emails sent: <strong>{stats.get('emails_sent', 0)}</strong></li>
 <li>Forms filled: <strong>{stats.get('forms_filled', 0)}</strong></li>
 <li>Follow-ups sent: <strong>{stats.get('followups_sent', 0)}</strong></li>
 </ul>
-<p style="color:#888;font-size:12px;">— FlowLockHunter v2 Agent</p>"""
+<p style="color:#888;font-size:12px;">— MicrodyneHunter v2 Agent</p>"""
     return _send_notification(subject, body)
 
 

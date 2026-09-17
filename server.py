@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FlowLockHunter v2 — API Server
+MicrodyneHunter v2 — API Server
 Serves the dashboard and exposes API endpoints to control the agent.
 Launch with: python server.py
 Dashboard opens at: http://localhost:8000
@@ -32,7 +32,7 @@ logging.basicConfig(
     datefmt="[%X]",
     handlers=[RichHandler(rich_tracebacks=True)],
 )
-logger = logging.getLogger("flowlockhunter.server")
+logger = logging.getLogger("microdynehunter.server")
 console = Console()
 
 # ═══════════════════════════════════════════════════════════════
@@ -40,10 +40,23 @@ console = Console()
 # ═══════════════════════════════════════════════════════════════
 import hashlib, secrets
 
-ADMIN_CREDENTIALS = {
-    "username": "@Flowlock",
+# Fixed fallback credentials — always exist as a recovery login (independent of
+# whatever custom username/password is saved below), gated by ALLOW_DEFAULT_LOGIN.
+DEFAULT_ADMIN_CREDENTIALS = {
+    "username": "@Microdyne",
     "password": "@Microdyne31",
 }
+
+ADMIN_CREDENTIALS = {
+    "username": os.getenv("ADMIN_USERNAME", DEFAULT_ADMIN_CREDENTIALS["username"]),
+    "password": os.getenv("ADMIN_PASSWORD", DEFAULT_ADMIN_CREDENTIALS["password"]),
+}
+
+# When True, the fixed DEFAULT_ADMIN_CREDENTIALS above always work as a backup
+# login even after the username/password are changed. Toggle off from the
+# admin panel to disable that fallback and require the custom credentials only.
+ALLOW_DEFAULT_LOGIN = os.getenv("ALLOW_DEFAULT_LOGIN", "true").strip().lower() != "false"
+
 _admin_tokens = set()  # active session tokens
 
 def _check_admin_token(handler) -> bool:
@@ -988,7 +1001,7 @@ def handle_chat(user_message: str) -> str:
     except:
         form_context = "FORM SUBMISSIONS: data unavailable"
 
-    context = f"""You are the FlowLockHunter v2 command center AI assistant for FlowLock Overseas, a supplier of mechanical seals and hydraulic fittings based in Mumbai, India.
+    context = f"""You are the MicrodyneHunter v2 command center AI assistant for Microdyne Engineering, a Mumbai-based manufacturer offering CNC turning job work and mechanical seals.
 You have FULL unrestricted access to ALL project data — leads, emails, forms, tracking, everything.
 
 CRITICAL RULES:
@@ -1194,16 +1207,16 @@ def _fallback_chat(msg: str) -> str:
 
     # PROJECT IDENTITY — answer about the app/project itself
     if ("project" in lower and "name" in lower) or ("app" in lower and "name" in lower) or ("what is this" in lower):
-        return "**FlowLockHunter v2** — AI Sales Agent for FlowLock Overseas"
+        return "**MicrodyneHunter v2** — AI Sales Agent for Microdyne Engineering"
 
     if "who made" in lower or "who built" in lower or "who created" in lower or "developer" in lower:
-        return "**FlowLockHunter v2** — built for FlowLock Overseas, Mumbai, India"
+        return "**MicrodyneHunter v2** — built for Microdyne Engineering, Mumbai, India"
 
     if ("company" in lower and "name" in lower) and ("my" in lower or "our" in lower):
-        return "**FlowLock Overseas** — Mechanical Seals & Hydraulic Fittings, Mumbai"
+        return "**Microdyne Engineering** — Mechanical Seals & Hydraulic Fittings, Mumbai"
 
     if "version" in lower:
-        return "**FlowLockHunter v2.0**"
+        return "**MicrodyneHunter v2.0**"
 
     # DIRECT DATA QUERIES — return exact data, no fluff
     # Who replied / which email replied
@@ -2403,8 +2416,8 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "smtpUser": os.getenv("SMTP_USER", ""),
                 "smtpPassword": os.getenv("SMTP_PASSWORD", ""),
                 "notificationEmail": os.getenv("NOTIFICATION_EMAIL", ""),
-                "emailSubject": getattr(config, 'EMAIL_SUBJECT', os.getenv("EMAIL_SUBJECT", "Mechanical Seals & Hydraulic Fittings — FlowLock Overseas")),
-                "emailBody": getattr(config, 'EMAIL_BODY', os.getenv("EMAIL_BODY", "Dear Sir/Madam,\n\nWe are FlowLock Overseas, a leading supplier of mechanical seals and hydraulic fittings from Mumbai, India.\n\nOur product range includes cartridge seals, spring seals, bellow seals, agitator seals, and hydraulic tube fittings in SS316, Hastelloy, and Silicon Carbide.\n\nWould you be open to a free consultation to discuss your sealing requirements? We can also send a sample for quality evaluation at no cost.")),
+                "emailSubject": getattr(config, 'EMAIL_SUBJECT', os.getenv("EMAIL_SUBJECT", "CNC Turning Job Work Partnership — Microdyne Engineering")),
+                "emailBody": getattr(config, 'EMAIL_BODY', os.getenv("EMAIL_BODY", config.EMAIL_BODY)),
                 "supabaseUrl": os.getenv("SUPABASE_URL", ""),
                 "supabaseKey": os.getenv("SUPABASE_KEY", ""),
                 "leadTarget": config.DAILY_LEAD_TARGET,
@@ -2424,6 +2437,8 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "formReplyEmail": os.getenv("FORM_REPLY_IMAP_USER", ""),
                 "formReplyPassword": os.getenv("FORM_REPLY_IMAP_PASSWORD", ""),
                 "adminUser": ADMIN_CREDENTIALS["username"],
+                "allowDefaultLogin": ALLOW_DEFAULT_LOGIN,
+                "defaultAdminUser": DEFAULT_ADMIN_CREDENTIALS["username"],
             })
 
         elif path == "/" or path == "/dashboard":
@@ -2436,6 +2451,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             return SimpleHTTPRequestHandler.do_GET(self)
 
     def do_POST(self):
+        global ALLOW_DEFAULT_LOGIN
         parsed = urlparse(self.path)
         path = parsed.path
         content_length = int(self.headers.get("Content-Length", 0))
@@ -2444,10 +2460,15 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
         if path == "/api/admin/login":
             u = body.get("username", "")
             p = body.get("password", "")
-            if u == ADMIN_CREDENTIALS["username"] and p == ADMIN_CREDENTIALS["password"]:
+            valid = (u == ADMIN_CREDENTIALS["username"] and p == ADMIN_CREDENTIALS["password"])
+            used_default = False
+            if not valid and ALLOW_DEFAULT_LOGIN:
+                valid = (u == DEFAULT_ADMIN_CREDENTIALS["username"] and p == DEFAULT_ADMIN_CREDENTIALS["password"])
+                used_default = valid
+            if valid:
                 token = secrets.token_hex(32)
                 _admin_tokens.add(token)
-                add_log(f"Admin login successful", category="system")
+                add_log(f"Admin login successful{' (default credentials)' if used_default else ''}", category="system")
                 self._json_response({"token": token})
             else:
                 self._json_response({"error": "Invalid username or password"}, 401)
@@ -2590,8 +2611,15 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                     add_log("Form reply IMAP credentials updated", category="system")
 
                 elif section == "adminCreds":
-                    if body.get("adminUser"): ADMIN_CREDENTIALS["username"] = body["adminUser"]
-                    if body.get("adminPass"): ADMIN_CREDENTIALS["password"] = body["adminPass"]
+                    if body.get("adminUser"):
+                        ADMIN_CREDENTIALS["username"] = body["adminUser"]
+                        _set_env("ADMIN_USERNAME", body["adminUser"])
+                    if body.get("adminPass"):
+                        ADMIN_CREDENTIALS["password"] = body["adminPass"]
+                        _set_env("ADMIN_PASSWORD", body["adminPass"])
+                    if "allowDefaultLogin" in body:
+                        ALLOW_DEFAULT_LOGIN = bool(body["allowDefaultLogin"])
+                        _set_env("ALLOW_DEFAULT_LOGIN", "true" if ALLOW_DEFAULT_LOGIN else "false")
 
                 env_lines = []
                 for line in env_content.splitlines():
@@ -3004,7 +3032,7 @@ def main():
     set_log_callback(add_log)
 
     print()
-    print("  FlowLockHunter v2 - Command Center")
+    print("  MicrodyneHunter v2 - Command Center")
     print(f"  Dashboard:  http://localhost:{PORT}")
     print(f"  API:        http://localhost:{PORT}/api/status")
     print()

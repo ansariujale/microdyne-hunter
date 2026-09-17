@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <!--
   ═══════════════════════════════════════════════════════════════
-  FlowLock Overseas — Email Template
+  Microdyne Engineering — Email Template
   ═══════════════════════════════════════════════════════════════
 
   HOW TO USE:
@@ -15,15 +15,17 @@
   4. The system replaces {{variables}} at send time
 
   VARIABLES (auto-replaced when sending):
-    {{company_name}}    → FlowLock Overseas
-    {{contact_name}}    → H. Khorajiya
-    {{phone}}           → +91-9082717763
-    {{email}}           → sales@flowlockoverseas.com
-    {{website}}         → www.flowlockoverseas.com
-    {{greeting}}        → Hi [Name],
-    {{body_content}}    → Email body paragraphs
-    {{cta_button}}      → CTA button HTML (stages 1-2)
-    {{pixel}}           → Tracking pixel (invisible)
+    {{company_name}}       → Microdyne Engineering
+    {{contact_name}}       → M. Marediya
+    {{header_phone_block}} → Phone pill in header (omitted if no phone set)
+    {{sig_phone_line}}     → Phone line in signature (omitted if no phone set)
+    {{footer_meta}}        → Address / GST / phone, bullet-separated (only what's set)
+    {{email}}               → sales@microdyneengineering.com
+    {{website}}              → www.microdyneengineering.com
+    {{greeting}}             → Hi [Name],
+    {{body_content}}         → Email body paragraphs
+    {{cta_button}}           → CTA button HTML (stages 1-2)
+    {{pixel}}                → Tracking pixel (invisible)
 
   FOR PREVIEW: variables show with sample data below
   ═══════════════════════════════════════════════════════════════
@@ -32,13 +34,15 @@
 // Auto-fill variables for preview when opened in browser
 window.addEventListener('DOMContentLoaded', function(){
   const vars = {
-    '{{company_name}}': 'FlowLock Overseas',
-    '{{contact_name}}': 'H. Khorajiya',
-    '{{phone}}': '+91-9082717763',
-    '{{email}}': 'sales@flowlockoverseas.com',
-    '{{website}}': 'www.flowlockoverseas.com',
+    '{{company_name}}': 'Microdyne Engineering',
+    '{{contact_name}}': 'M. Marediya',
+    '{{header_phone_block}}': '<a href="tel:+919082121601" style="display:inline-block;padding:8px 18px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#ffffff;text-decoration:none;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;font-size:12px;font-weight:600;"><img src="https://img.icons8.com/ios-filled/14/ffffff/phone.png" width="12" height="12" style="vertical-align:middle;margin-right:4px;" alt=""> +91-9082121601</a>',
+    '{{sig_phone_line}}': '<a href="tel:+919082121601" style="color:#2c3e50;text-decoration:none;font-weight:600;"><img src="https://img.icons8.com/ios-filled/16/2c3e50/phone.png" width="14" height="14" style="vertical-align:middle;margin-right:6px;" alt="">+91-9082121601</a><br>',
+    '{{footer_meta}}': 'Mumbai, Maharashtra, India &nbsp;&bull;&nbsp; GST: 27BWWPM3354A1ZC &nbsp;&bull;&nbsp; +91-9082121601',
+    '{{email}}': 'sales@microdyneengineering.com',
+    '{{website}}': 'www.microdyneengineering.com',
     '{{greeting}}': '<p style="margin:0 0 16px 0;font-size:15px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;color:#2c3e50;">Dear Sir/Madam,</p>',
-    '{{body_content}}': '<p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">We are <strong style="color:#2c3e50;">FlowLock Overseas</strong>, a leading supplier of <strong style="color:#2c3e50;">mechanical seals</strong> and <strong style="color:#2c3e50;">hydraulic fittings</strong> from Mumbai, India.</p><p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">Our product range includes <strong style="color:#2c3e50;">cartridge seals</strong>, <strong style="color:#2c3e50;">spring seals</strong>, <strong style="color:#2c3e50;">bellow seals</strong>, agitator seals, and hydraulic tube fittings in <strong style="color:#2c3e50;">SS316</strong>, <strong style="color:#2c3e50;">Hastelloy</strong>, and <strong style="color:#2c3e50;">Silicon Carbide</strong>.</p><p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">Would you be open to a <strong style="color:#2c3e50;">free consultation</strong> to discuss your sealing requirements? We can also send a sample for quality evaluation at no cost.</p>',
+    '{{body_content}}': '<p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">I\'m writing from <strong style="color:#2c3e50;">Microdyne Engineering</strong>, a Mumbai-based manufacturing company. Since 2021 we\'ve run our own line of mechanical seals, and alongside that we operate in-house <strong style="color:#2c3e50;">CNC turning</strong> capacity for job work &mdash; screws, nuts, sleeves, bushings, and other turned components.</p><p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">We\'re looking to partner with manufacturers who need reliable turning job-work support, especially when your own shop floor is running at capacity. If that\'s something you outsource, we\'d welcome the chance to quote a trial batch and show you our quality and turnaround.</p><p style="margin:0 0 12px 0;line-height:1.7;color:#4a4a4a;font-size:14px;font-family:\'Segoe UI\',Roboto,Arial,sans-serif;">Would you be open to a <strong style="color:#2c3e50;">short call</strong> to see if there\'s a fit for your production needs?</p>',
     '{{cta_button}}': '',
     '{{pixel}}': '<!-- tracking pixel -->'
   };
@@ -74,10 +78,10 @@ window.addEventListener('DOMContentLoaded', function(){
         <tr>
           <td>
             <div style="font-family:'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:20px;font-weight:800;color:#ffffff;letter-spacing:0.3px;">{{company_name}}</div>
-            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;letter-spacing:0.8px;text-transform:uppercase;">Mechanical Seals &bull; Hydraulic Fittings &bull; Sealing Solutions</div>
+            <div style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:11px;color:rgba(255,255,255,0.75);margin-top:3px;letter-spacing:0.8px;text-transform:uppercase;">CNC Turning Job Work &bull; Precision Turned Components &bull; Mechanical Seals</div>
           </td>
-          <td align="right" valign="middle">
-            <a href="tel:+919082717763" style="display:inline-block;padding:8px 18px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:6px;color:#ffffff;text-decoration:none;font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;font-weight:600;"><img src="https://img.icons8.com/ios-filled/14/ffffff/phone.png" width="12" height="12" style="vertical-align:middle;margin-right:4px;" alt=""> {{phone}}</a>
+          <td align="right" valign="middle" class="header-phone">
+            {{header_phone_block}}
           </td>
         </tr>
       </table>
@@ -107,7 +111,7 @@ window.addEventListener('DOMContentLoaded', function(){
             <table cellpadding="0" cellspacing="0">
               <tr>
                 <td style="font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;color:#2c3e50;line-height:2.2;">
-                  <a href="tel:+919082717763" style="color:#2c3e50;text-decoration:none;font-weight:600;"><img src="https://img.icons8.com/ios-filled/16/2c3e50/phone.png" width="14" height="14" style="vertical-align:middle;margin-right:6px;" alt="">{{phone}}</a><br>
+                  {{sig_phone_line}}
                   <a href="mailto:{{email}}" style="color:#3498db;text-decoration:none;"><img src="https://img.icons8.com/ios-filled/16/3498db/new-post.png" width="14" height="14" style="vertical-align:middle;margin-right:6px;" alt="">{{email}}</a><br>
                   <a href="https://{{website}}" style="color:#3498db;text-decoration:none;"><img src="https://img.icons8.com/ios-filled/16/3498db/globe--v1.png" width="14" height="14" style="vertical-align:middle;margin-right:6px;" alt="">{{website}}</a>
                 </td>
@@ -127,8 +131,8 @@ window.addEventListener('DOMContentLoaded', function(){
           <td style="font-family:'Segoe UI',Roboto,Arial,sans-serif;">
             <div style="font-size:12px;font-weight:700;color:#2c3e50;margin-bottom:4px;">{{company_name}}</div>
             <div style="font-size:11px;color:#7f8c8d;line-height:1.7;">
-              Supplier of <strong style="color:#5a6c7d;">Mechanical Seals</strong> &amp; <strong style="color:#5a6c7d;">Hydraulic Fittings</strong><br>
-              Mumbai, Maharashtra, India &nbsp;&bull;&nbsp; GST: 27ISYPK7898N1ZX &nbsp;&bull;&nbsp; <a href="tel:+919082717763" style="color:#3498db;text-decoration:none;font-weight:600;">+91 9082717763</a>
+              CNC Turning Job Work &amp; <strong style="color:#5a6c7d;">Mechanical Seals</strong> Manufacturer<br>
+              {{footer_meta}}
             </div>
           </td>
         </tr>
@@ -136,17 +140,15 @@ window.addEventListener('DOMContentLoaded', function(){
           <td style="padding-top:12px;">
             <table cellpadding="0" cellspacing="0">
               <tr>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Cartridge Seals</td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">CNC Turning</td>
                 <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Spring Seals</td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Turned Components</td>
                 <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Bellow Seals</td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Screws &amp; Sleeves</td>
                 <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Hydraulic Fittings</td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Job Work</td>
                 <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Agitator Seals</td>
-                <td width="6"></td>
-                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Seal Repair</td>
+                <td style="padding:4px 10px;background:#eaf3fb;border-radius:4px;font-size:10px;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#3498db;font-weight:600;letter-spacing:0.3px;">Mechanical Seals</td>
               </tr>
             </table>
           </td>

@@ -1,10 +1,10 @@
 @echo off
-title FlowLock Overseas — Command Center
+title Microdyne Engineering — Command Center
 color 0B
 
 echo.
 echo  ======================================================
-echo   FlowLock Overseas — Starting Command Center...
+echo   Microdyne Engineering — Starting Command Center...
 echo  ======================================================
 echo.
 

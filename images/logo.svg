@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="mdGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4d8dff"/>
+      <stop offset="100%" stop-color="#7c5cff"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="26" fill="url(#mdGrad)"/>
+  <!-- turning/lathe motif: concentric arcs suggesting a turned component -->
+  <circle cx="60" cy="60" r="34" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.9"/>
+  <circle cx="60" cy="60" r="34" fill="none" stroke="#ffffff" stroke-width="6"
+          stroke-dasharray="26 160" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+  <text x="60" y="70" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+        font-size="34" font-weight="800" fill="#ffffff">M</text>
+</svg>

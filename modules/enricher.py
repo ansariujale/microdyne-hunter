@@ -1,5 +1,5 @@
 """
-FlowLockHunter v2 — Lead Enrichment Module
+MicrodyneHunter v2 — Lead Enrichment Module
 Fetches company website HTML → extracts emails & phone numbers via regex.
 Ported from the user's n8n JS extraction logic.
 """
@@ -15,7 +15,7 @@ import httpx
 
 from config import REQUEST_TIMEOUT
 
-logger = logging.getLogger("flowlockhunter.enricher")
+logger = logging.getLogger("microdynehunter.enricher")
 
 # ═══════════════════════════════════════════════════════════════
 # HELPERS
@@ -330,8 +330,10 @@ def score_lead(lead: dict) -> dict:
 
     # Lead type scoring
     type_scores = {
-        "chemical_plant": 30, "pharmaceutical": 25, "oil_gas": 25, "water_treatment": 25,
-        "oem_pump_manufacturer": 20, "power_generation": 20, "food_processing": 15, "general_engineering": 10, "other": 0,
+        "cnc_turning_job_work_buyer": 30, "precision_turned_component_buyer": 25,
+        "screw_nut_sleeve_manufacturer": 25, "pump_valve_manufacturer": 20,
+        "automotive_component_manufacturer": 20, "electrical_equipment_manufacturer": 15,
+        "hydraulic_pneumatic_manufacturer": 15, "general_engineering": 10, "other": 0,
     }
     type_bonus = type_scores.get(lead.get("lead_type", "other"), 0)
     score += type_bonus

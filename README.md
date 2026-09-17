@@ -1,4 +1,4 @@
-# FlowLockHunter v2 — AI Sales Agent for FlowLock Overseas
+# MicrodyneHunter v2 — AI Sales Agent for Microdyne Engineering
 
 AI-powered sales agent that scrapes 1,000 leads/day, sends personalized cold emails, fills website contact forms, and auto-optimizes targeting based on what converts.
 
@@ -67,18 +67,18 @@ python main.py --schedule
 
 ## Multi-Domain Email Setup
 
-**Never send cold emails from flowlockoverseas.com** — use outreach domains:
+**Never send cold emails from microdyneengineering.com** — use outreach domains:
 
 | Domain          | Mailboxes | Emails/Day |
 |---------------|-----------|------------|
-| getflowlock.com | 2 | ~130 |
-| flowlock.io | 2 | ~130 |
-| flowlockseals.com | 2 | ~130 |
-| flowlockcnc.com | 2 | ~130 |
-| tryflowlock.com | 2 | ~130 |
-| flowlockindia.com | 2 | ~130 |
-| flowlockglobal.com | 2 | ~130 |
-| helloflowlock.com | 2 | ~130 |
+| getmicrodyne.com | 2 | ~130 |
+| microdyne.io | 2 | ~130 |
+| microdyneseals.com | 2 | ~130 |
+| microdynecnc.com | 2 | ~130 |
+| trymicrodyne.com | 2 | ~130 |
+| microdyneindia.com | 2 | ~130 |
+| microdyneglobal.com | 2 | ~130 |
+| hellomicrodyne.com | 2 | ~130 |
 | **TOTAL** | **16** | **~1,040/day** |
 
 Per domain setup:
@@ -86,7 +86,7 @@ Per domain setup:
 2. Set up 2 email accounts
 3. Add SPF: `v=spf1 include:_spf.hostinger.com include:_spf.instantly.ai ~all`
 4. Enable DKIM in Hostinger
-5. Add DMARC: `v=DMARC1; p=none; rua=mailto:dmarc@flowlockoverseas.com; pct=100`
+5. Add DMARC: `v=DMARC1; p=none; rua=mailto:dmarc@microdyneengineering.com; pct=100`
 6. Connect to Instantly and enable warmup
 7. Wait 2-3 weeks before sending cold emails
 
@@ -109,7 +109,7 @@ Per domain setup:
 4. **EMAIL** — Send 1,000 personalized cold emails via Instantly
 5. **FORM FILL** — Submit 1,000 website contact forms via Playwright
 6. **FOLLOW UP** — 4-email sequence over 14 days for non-responders
-7. **HAND OFF** — Hot leads notify Shohail instantly
+7. **HAND OFF** — Hot leads notify the team instantly
 
 ## Lead Scoring Logic
 
@@ -120,13 +120,12 @@ Leads are scored using a **dual-mode system**: AI-based scoring when an API key 
 | Factor | Points | Details |
 |--------|--------|---------|
 | **Base score** | 30 | Every lead starts here |
-| **Lead type: Chemical Plant** | +30 | Highest value target |
-| **Lead type: Pharmaceutical / Oil & Gas** | +25 | Strong fit for mechanical seals |
-| **Lead type: OEM Pump Manufacturer / Power Gen** | +20 | Good potential buyers |
-| **Lead type: Water Treatment** | +15 | Industrial seal users |
-| **Lead type: Food Processing** | +10 | Specialized seal requirements |
+| **Lead type: CNC Turning Job Work Buyer** | +30 | Highest value target |
+| **Lead type: Precision Turned Components / Screw-Nut-Sleeve Mfr** | +25 | Strong fit for turning job work |
+| **Lead type: Pump/Valve / Automotive Component Mfr** | +20 | Good potential buyers |
+| **Lead type: Electrical Equipment / Hydraulic-Pneumatic Mfr** | +15 | Likely to need turned components |
 | **Has email** | +10 | Contactable lead |
-| **Decision-maker title** | +10 | Plant Manager, Maintenance Head, Procurement Manager |
+| **Decision-maker title** | +10 | Procurement Manager, Production Manager, Plant Manager |
 | **Priority country** | +10 | India, UAE, US, Germany, Saudi Arabia, Singapore |
 | **Has website** | +5 | Can be form-filled |
 | **Has phone** | +5 | Additional contact channel |
@@ -145,8 +144,8 @@ Leads are scored using a **dual-mode system**: AI-based scoring when an API key 
 ### AI-Based Scoring (Primary)
 
 When an AI provider is available, leads are evaluated 0-100 based on:
-1. Does their business need mechanical seals or CNC precision components?
-2. Are they in a country where FlowLock Overseas can supply competitively?
+1. Does their business need CNC turning job work, turned components, or mechanical seals?
+2. Are they a manufacturer likely to outsource turning work when their own shop floor is at capacity?
 3. Is the contact person a decision-maker?
 4. Company size and relevance to industrial manufacturing
 

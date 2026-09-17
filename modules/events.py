@@ -1,12 +1,12 @@
 """
-FlowLockHunter v2 — Event System
+MicrodyneHunter v2 — Event System
 Callback-based event emitter for structured dashboard logging.
 Avoids circular imports between modules and server.py.
 """
 
 import logging
 
-logger = logging.getLogger("flowlockhunter.events")
+logger = logging.getLogger("microdynehunter.events")
 
 # ═══════════════════════════════════════════════════════════════
 # CALLBACK REGISTRY
