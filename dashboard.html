@@ -772,8 +772,7 @@
     .funnel-tabs{grid-template-columns:1fr;}
   }
   @media(max-width:768px){
-    .sidebar{display:none;}
-    .header{padding:0 14px;gap:9px;}
+    .header{padding:0 12px;gap:9px;}
     .h-title{font-size:13px;white-space:nowrap;}
     .h-title span,.cmd-hint{display:none;}
     .main{padding:20px 16px 48px;}
@@ -1111,7 +1110,7 @@
   .gauge-arc{stroke-width:7.5;}
 
   /* sample data badge — impossible to mistake for live numbers */
-  .sample-badge{display:none;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;
+  .sample-badge{display:none;align-items:center;gap:7px;white-space:nowrap;flex-shrink:0;height:32px;padding:0 12px;border-radius:8px;
     font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:500;letter-spacing:0.14em;
     text-transform:uppercase;cursor:pointer;
     background:rgba(255,159,104,0.14);border:1px solid rgba(255,159,104,0.4);color:var(--orange);}
@@ -1130,6 +1129,52 @@
     .ambient .blob,.ambient .lines .flow{animation:none !important;}
     .spark.draw path.line,.spark.draw path.area,.spark.draw .dot{animation:none !important;
       stroke-dashoffset:0 !important;opacity:1 !important;}
+  }
+
+  /* ═══ MOBILE NAVIGATION ═══
+     Below 768px the sidebar becomes a drawer opened from the header. */
+  .nav-toggle{display:none;align-items:center;justify-content:center;width:36px;height:36px;flex-shrink:0;
+    border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);
+    cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent;
+    transition:background 0.18s ease,color 0.18s ease,border-color 0.18s ease;}
+  .nav-toggle:hover{background:var(--surface2);color:var(--text);border-color:var(--border-light);}
+  .nav-toggle:active{transform:scale(0.94);}
+  .nav-toggle .bars{width:16px;height:12px;position:relative;display:block;}
+  .nav-toggle .bars i{position:absolute;left:0;width:100%;height:1.6px;border-radius:2px;background:currentColor;
+    transition:transform 0.3s cubic-bezier(.16,1,.3,1),opacity 0.2s ease;}
+  .nav-toggle .bars i:nth-child(1){top:0;}
+  .nav-toggle .bars i:nth-child(2){top:5.2px;}
+  .nav-toggle .bars i:nth-child(3){top:10.4px;}
+  body.nav-open .nav-toggle{color:var(--text);border-color:var(--border-light);}
+  body.nav-open .nav-toggle .bars i:nth-child(1){transform:translateY(5.2px) rotate(45deg);}
+  body.nav-open .nav-toggle .bars i:nth-child(2){opacity:0;transform:scaleX(0.3);}
+  body.nav-open .nav-toggle .bars i:nth-child(3){transform:translateY(-5.2px) rotate(-45deg);}
+
+  .nav-scrim{position:fixed;inset:0;z-index:90;background:rgba(6,7,9,0.55);
+    -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+    opacity:0;pointer-events:none;transition:opacity 0.28s ease;}
+  [data-theme="light"] .nav-scrim{background:rgba(24,27,33,0.38);}
+
+  @media(max-width:768px){
+    .nav-toggle{display:flex;}
+    .sidebar{display:block;position:fixed;top:56px;left:0;z-index:95;
+      width:min(272px,82vw);height:calc(100vh - 56px);height:calc(100dvh - 56px);
+      padding:20px 0 28px;border-right:1px solid var(--border);
+      background-color:var(--sidebar-bg);
+      background-image:linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.012) 42%,transparent);
+      box-shadow:22px 0 60px -30px rgba(0,0,0,0.75);
+      transform:translateX(-102%);visibility:hidden;
+      transition:transform 0.34s cubic-bezier(.16,1,.3,1),visibility 0.34s;
+      overscroll-behavior:contain;}
+    body.nav-open .sidebar{transform:none;visibility:visible;}
+    body.nav-open .nav-scrim{opacity:1;pointer-events:auto;}
+    body.nav-open{overflow:hidden;}
+    .nav-item{height:42px;font-size:14px;}
+    .nav-section{margin-bottom:22px;}
+  }
+  @media(max-width:768px) and (prefers-reduced-motion:reduce){
+    .sidebar{transition:none;}
+    .nav-toggle .bars i{transition:none;}
   }
 
 </style>
@@ -1166,6 +1211,9 @@
 
 <!-- HEADER -->
 <div class="header">
+  <button class="nav-toggle" id="navToggle" onclick="toggleNav()" aria-label="Menu" aria-expanded="false" aria-controls="sidebar">
+    <span class="bars"><i></i><i></i><i></i></span>
+  </button>
   <div class="logo" style="background:#fff;border-color:#3498db;padding:2px;"><img src="images/logo-mark.png" alt="Microdyne Hunter" style="width:24px;height:24px;object-fit:contain;"></div>
   <div class="h-title">Microdyne Hunter <span>Command Center v2.0</span></div>
   <div class="h-right">
@@ -1192,8 +1240,10 @@
 
 <!-- LAYOUT -->
 <div class="layout">
+  <div class="nav-scrim" id="navScrim" onclick="closeNav()"></div>
+
   <!-- SIDEBAR -->
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
     <div class="nav-section">
       <div class="nav-label">Overview</div>
       <div class="nav-item active" onclick="showPage('dashboard')">
@@ -2430,7 +2480,31 @@ function generateDemoSources(){
 // ═══════════════════════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// MOBILE NAV DRAWER
+// ═══════════════════════════════════════════════════════════════
+function setNav(open){
+  document.body.classList.toggle('nav-open', open);
+  const btn = document.getElementById('navToggle');
+  if(btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function toggleNav(){ setNav(!document.body.classList.contains('nav-open')); }
+function closeNav(){ if(document.body.classList.contains('nav-open')) setNav(false); }
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') closeNav();
+});
+window.addEventListener('resize', () => {
+  if(window.innerWidth > 768) closeNav();
+});
+// the admin link leaves the page, so shut the drawer behind it
+document.addEventListener('DOMContentLoaded', () => {
+  const admin = document.querySelector('.sidebar a.nav-item');
+  if(admin) admin.addEventListener('click', closeNav);
+});
+
 function showPage(name, el){
+  closeNav();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   const page = document.getElementById('page-'+name);
@@ -3237,6 +3311,11 @@ async function renderEmailChart(){
   // Fetch live data from report API for accurate real-time stats
   const reportData = await api('/api/report-data');
   if(!reportData || !reportData.leads) return;
+  // a previous empty state replaces the canvas outright — put it back
+  const emailCanvasHost = document.querySelector('#page-email .chart-container');
+  if(emailCanvasHost && !document.getElementById('chartEmail')){
+    emailCanvasHost.innerHTML = '<canvas id="chartEmail"></canvas>';
+  }
 
   if(charts.email) charts.email.destroy();
 
@@ -4363,7 +4442,7 @@ async function renderFunnel(){
   const dateTo = document.getElementById('funnelDateTo')?.value || '';
   if(!_validateDateRange(dateFrom, dateTo).ok) return;
 
-  if(serverConnected){
+  if(serverConnected || PREVIEW){
     const qs = [];
     if(dateFrom) qs.push('date_from=' + encodeURIComponent(dateFrom));
     if(dateTo) qs.push('date_to=' + encodeURIComponent(dateTo));
@@ -4647,6 +4726,14 @@ function downloadFunnelChart(){
 // API CALLS (talk to server.py backend)
 // ═══════════════════════════════════════════════════════════════
 async function api(path, method='GET', body=null){
+  if(PREVIEW){
+    const q = new URLSearchParams(path.split('?')[1] || '');
+    const from = q.get('date_from') || '', to = q.get('date_to') || '';
+    if(path.startsWith('/api/report-data'))     return SAMPLE.report(from, to);
+    if(path.startsWith('/api/email-stats'))     return SAMPLE.emailStats(from, to);
+    if(path.startsWith('/api/email-tracking'))  return SAMPLE.tracking(from, to);
+    if(path.startsWith('/api/email-sequences')) return SAMPLE.sequences(from, to);
+  }
   try{
     const opts = {method, headers:{'Content-Type':'application/json'}};
     if(body) opts.body = JSON.stringify(body);
@@ -4967,41 +5054,272 @@ async function saveFormMessage(){
 let PREVIEW = (localStorage.getItem('mh-preview') === '1') ||
               new URLSearchParams(location.search).get('preview') === '1';
 
+function ymd(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
 function seeded(n){ // deterministic, so the charts don't dance between polls
   let x = Math.sin(n * 9973.7) * 10000;
   return x - Math.floor(x);
 }
 
 const SAMPLE = {
-  series(key, days, peak, floor = 0){
-    const out = [];
-    for(let i = 0; i < days; i++){
-      const ramp = 0.38 + 0.62 * (i / Math.max(1, days - 1));   // a pipeline that grows
-      const jitter = 0.72 + seeded(i + key.length * 31) * 0.5;  // steady week-to-week noise
-      out.push(Math.max(floor, Math.round(peak * ramp * jitter)));
+  // ── 45 days of daily volume, shaped like a real pipeline ──
+  // Two overlapping waves plus a weekend collapse, so the graphs rise
+  // and fall instead of drifting in one direction.
+  get daily(){
+    if(this._daily) return this._daily;
+    const DAYS = 45, out = [];
+    for(let i = 0; i < DAYS; i++){
+      const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - (DAYS - 1 - i));
+      const dow = d.getDay(), weekend = (dow === 0 || dow === 6);
+      const wave = 0.70 + 0.30 * Math.sin(i / 3.6) + 0.22 * Math.sin(i / 10.5 + 1.3);
+      const noise = 0.80 + seeded(i * 7 + 3) * 0.40;
+      const f = Math.max(0.12, wave * noise * (weekend ? 0.30 : 1));
+      const last = (i === DAYS - 1);
+      out.push({
+        date: d, ymd: ymd(d),
+        found: last ? 46 : Math.max(3, Math.round(74 * f)),
+        emails: last ? 7 : Math.max(0, Math.min(10, Math.round(9.4 * f))),
+        forms: last ? 63 : Math.max(0, Math.min(100, Math.round(62 * f))),
+      });
     }
-    return out;
+    return (this._daily = out);
   },
+
+  // ── lead records carrying those dates, so every date-ranged chart,
+  //    table and filter has real history behind it ──
+  get corpus(){
+    if(this._corpus) return this._corpus;
+    const A = ['Sundar','Kirloskar','Deccan','Bharat','Nashik','Anand','Veer','Shakti','Precision','Rhein',
+               'Emirates','Gulf','Atlas','Nordic','Castel','Meridian','Orion','Vulcan','Sterling','Kaveri'];
+    const B = ['Pumps','Hydraulics','Valves','Gears','Compressors','Bearings','Seals','Fasteners','Actuators',
+               'Process Equipment','Fluid Systems','Machine Tools','Couplings','Drives','Instruments'];
+    const C = ['Pvt Ltd','Industries','Works','Engineering','Systems','Manufacturing','Group'];
+    const PLACES = [
+      ['India','Maharashtra','Pune'], ['India','Tamil Nadu','Coimbatore'], ['India','Gujarat','Rajkot'],
+      ['India','Karnataka','Bengaluru'], ['India','Telangana','Hyderabad'], ['India','Maharashtra','Nashik'],
+      ['UAE','Sharjah','Sharjah'], ['UAE','Dubai','Dubai'], ['Germany','NRW','Essen'],
+      ['Italy','Lombardy','Milan'], ['Oman','Muscat','Muscat'], ['Saudi Arabia','Riyadh','Riyadh'],
+    ];
+    const TYPES = ['pump_manufacturer','valve_manufacturer','hydraulic_equipment','gearbox_manufacturer','machine_builder'];
+    const ROLES = ['Purchase Head','Plant Manager','Sourcing Lead','Proprietor'];
+    const at = (d, h, m) => { const x = new Date(d); x.setHours(h, m, 0, 0); return x.toISOString(); };
+    const pick = (arr, n) => arr[Math.floor(seeded(n) * arr.length) % arr.length];
+
+    const leads = [], foundOn = [];
+    let n = 0;
+    this.daily.forEach((day, di) => {
+      foundOn[di] = [];
+      for(let k = 0; k < day.found; k++, n++){
+        const p = pick(PLACES, n * 5 + 2);
+        const name = pick(A, n*11+1) + ' ' + pick(B, n*19+4) + ' ' + pick(C, n*23+6);
+        const domain = name.toLowerCase().replace(/[^a-z0-9]+/g,'').slice(0,18) + n + '.com';
+        const lead = {
+          id: 'sample-' + n, company_name: name, company_domain: domain, website_url: 'https://' + domain,
+          contact_name: pick(ROLES, n*3+11), contact_email: 'purchase@' + domain,
+          country: p[0], state: p[1], city: p[2],
+          lead_type: pick(TYPES, n*29+8),
+          score: 38 + Math.round(seeded(n*31+12) * 58),
+          created_at: at(day.date, 9 + Math.floor(seeded(n*3+11) * 9), Math.floor(seeded(n*37+3) * 60)),
+          email_sent: false, email_opened: false, replied: false, closed: false, interested: false,
+          form_filled: false, form_submission_status: 'pending', form_error_message: '',
+          revenue_monthly: 0, sequence_stage: 0, excluded: false,
+        };
+        leads.push(lead); foundOn[di].push(lead);
+      }
+    });
+
+    // Outreach works a backlog: leads found on one day are contacted on a
+    // later one, which is what puts activity on past dates rather than today.
+    let emailQ = [], formQ = [];
+    this.daily.forEach((day, di) => {
+      if(di > 0){
+        emailQ = emailQ.concat(foundOn[di-1]).sort((a,b) => b.score - a.score);  // best prospect first
+        formQ = formQ.concat(foundOn[di-1]);                                     // forms go in order found
+      }
+      for(let k = 0; k < day.emails && emailQ.length; k++){
+        const l = emailQ.shift();
+        l.email_sent = true;
+        l.email_sent_at = at(day.date, 11, 5 + k * 3);
+        l.sequence_stage = 1;
+      }
+      for(let k = 0; k < day.forms && formQ.length; k++){
+        const l = formQ.shift();
+        const roll = seeded(leads.indexOf(l) * 41 + 7);
+        l.form_last_attempted_at = at(day.date, 12, (k * 7) % 60);
+        if(roll < 0.74){ l.form_filled = true; l.form_submission_status = 'success'; l.form_filled_at = l.form_last_attempted_at; }
+        else if(roll < 0.89){ l.form_submission_status = 'failed'; l.form_error_message = 'No contact form found'; }
+        else { l.form_submission_status = 'failed'; l.form_error_message = 'Submission blocked by captcha'; }
+      }
+    });
+
+    // opens and replies land a few hours to a couple of days after the send
+    leads.filter(l => l.email_sent).forEach((l, i) => {
+      const roll = seeded(i * 43 + 13);
+      if(roll < 0.34){
+        l.email_opened = true;
+        l.open_count = 1 + Math.floor(seeded(i * 47 + 2) * 3);
+        l.opened_at = new Date(new Date(l.email_sent_at).getTime() + 3.4e6 * (1 + roll * 9)).toISOString();
+      }
+      if(roll < 0.09){
+        l.replied = true;
+        l.replied_at = new Date(new Date(l.email_sent_at).getTime() + 8.6e6 * (1 + roll * 6)).toISOString();
+        l.interested = seeded(i * 53 + 4) < 0.55;
+        if(seeded(i * 59 + 6) < 0.3){ l.closed = true; l.revenue_monthly = 45000 + Math.round(seeded(i*61+8) * 180000); }
+      }
+    });
+    return (this._corpus = leads);
+  },
+
+  // Sparklines count the corpus's own events, so the small charts and the
+  // big ones can never disagree.
   get trends(){
+    if(this._trends) return this._trends;
+    const days = this.daily.slice(-14).map(d => d.ymd);
+    const tally = (rows, field) => {
+      const by = {};
+      rows.forEach(l => { const k = (l[field] || '').slice(0,10); if(k) by[k] = (by[k] || 0) + 1; });
+      return days.map(d => by[d] || 0);
+    };
+    const c = this.corpus;
+    return (this._trends = {
+      leads:   tally(c, 'created_at'),
+      emails:  tally(c.filter(l => l.email_sent), 'email_sent_at'),
+      forms:   tally(c.filter(l => l.form_filled), 'form_last_attempted_at'),
+      opens:   tally(c.filter(l => l.email_opened), 'opened_at'),
+      replies: tally(c.filter(l => l.replied), 'replied_at'),
+    });
+  },
+
+  // mirrors the server's /api/report-data, date scoping included
+  report(from, to){
+    const inRange = ts => {
+      if(!ts) return false;
+      const d = ts.slice(0,10);
+      if(from && d < from) return false;
+      if(to && d > to) return false;
+      return true;
+    };
+    const ranged = !!(from || to);
+    const scoped = [];
+    this.corpus.forEach(l => {
+      const emailIn = ranged ? inRange(l.email_sent_at) : !!l.email_sent;
+      const formIn  = ranged ? inRange(l.form_last_attempted_at) : !!l.form_filled;
+      const replyIn = ranged ? inRange(l.replied_at) : !!l.replied;
+      const openIn  = ranged ? inRange(l.opened_at) : !!l.email_opened;
+      const madeIn  = ranged ? inRange(l.created_at) : true;
+      if(ranged && !(madeIn || emailIn || formIn || replyIn || openIn)) return;
+      scoped.push(Object.assign({}, l, {
+        email_sent: emailIn, form_filled: formIn && l.form_filled,
+        replied: replyIn, email_opened: openIn,
+      }));
+    });
+    const c = k => scoped.filter(k).length;
     return {
-      leads: this.series('leads', 14, 46, 6),
-      emails: this.series('emails', 14, 10, 2).map(v => Math.min(10, v)),
-      forms: this.series('forms', 14, 82, 12),
-      opens: this.series('opens', 14, 26, 1),
-      replies: this.series('replies', 14, 6),
+      total: scoped.length,
+      emailed: c(l => l.email_sent),
+      opened: c(l => l.email_opened),
+      total_opens: scoped.reduce((s,l) => s + (l.email_opened ? (l.open_count || 1) : 0), 0),
+      forms_filled: c(l => l.form_filled),
+      replies: c(l => l.replied),
+      closed: c(l => l.closed),
+      outreached: c(l => l.email_sent || l.form_filled),
+      date_from: from || null, date_to: to || null,
+      // newest first, like the server's created_at.desc — and unsliced, because
+      // outreach hits old leads and cutting the tail would blank out recent dates
+      leads: scoped.sort((a,b) => b.created_at.localeCompare(a.created_at)),
     };
   },
-  totals: { leads: 1284, emails: 7, forms: 63, replies: 34, opened: 212 },
-  quota: { email_limit: 10, emails_sent_today: 7, form_limit: 100, forms_submitted_today: 63,
-           pending_email: 118, pending_form: 46, extraction_needed: false,
-           auto_daily_run: true, daily_run_time: '11:05', reset_time: '11:00' },
-  hotLeads: [
-    ['Sundar Pumps & Valves', 'Coimbatore · India', 'Replied', 92],
-    ['Kirloskar Process Equipment', 'Pune · India', 'Opened 3×', 88],
-    ['Emirates Hydraulic Systems', 'Sharjah · UAE', 'Opened', 85],
-    ['Deccan Gearbox Works', 'Hyderabad · India', 'Replied', 81],
-    ['Rhein Kompressoren GmbH', 'Essen · Germany', 'Opened', 78],
-  ],
+
+  get totals(){
+    if(this._totals) return this._totals;
+    const c = this.corpus, today = this.daily[this.daily.length - 1];
+    return (this._totals = {
+      leads: c.length, newToday: today.found, emails: today.emails, forms: today.forms,
+      sent: c.filter(l => l.email_sent).length,
+      replies: c.filter(l => l.replied).length,
+      uniqueOpens: c.filter(l => l.email_opened).length,
+      opened: c.reduce((s,l) => s + (l.open_count || 0), 0),
+    });
+  },
+
+  get quota(){
+    if(this._quota) return this._quota;
+    const c = this.corpus, today = this.daily[this.daily.length - 1];
+    return (this._quota = {
+      email_limit: 10, emails_sent_today: today.emails,
+      form_limit: 100, forms_submitted_today: today.forms,
+      pending_email: c.filter(l => !l.email_sent).length,
+      pending_form: c.filter(l => l.form_submission_status === 'pending').length,
+      extraction_needed: false, auto_daily_run: true,
+      daily_run_time: '11:05', reset_time: '11:00',
+    });
+  },
+
+
+  // ── the Email page's tables, derived from the same corpus ──
+  emailStats(from, to){
+    const r = this.report(from, to);
+    return { total_outreach: r.emailed,
+             open_rate: r.emailed ? Math.round(r.opened / r.emailed * 100) : 0,
+             reply_rate: r.emailed ? Math.round(r.replies / r.emailed * 100) : 0 };
+  },
+
+  tracking(from, to){
+    const SUBJECTS = [
+      'CNC turning capacity for your components',
+      'Turned parts — job work partnership',
+      'Microdyne Engineering · CNC turning job work',
+      'Spare turning capacity this month',
+      'Turning job work enquiry — Microdyne Engineering',
+    ];
+    const DEVICES = [
+      ['Mobile','iOS','Apple Mail','Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15'],
+      ['Desktop','Windows','Outlook','Mozilla/5.0 (Windows NT 10.0; Win64; x64) Microsoft Outlook 16.0'],
+      ['Desktop','macOS','Gmail','Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) GoogleImageProxy'],
+      ['Mobile','Android','Gmail','Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 GoogleImageProxy'],
+      ['Desktop','Windows','Gmail','Mozilla/5.0 (Windows NT 10.0; Win64; x64) GoogleImageProxy'],
+    ];
+    const r = this.report(from, to);
+    const rows = r.leads.filter(l => l.email_sent)
+      .sort((a,b) => (b.opened_at || b.email_sent_at).localeCompare(a.opened_at || a.email_sent_at))
+      .slice(0, 60)
+      .map((l, i) => {
+        const dev = DEVICES[Math.floor(seeded(i * 67 + 5) * DEVICES.length) % DEVICES.length];
+        return {
+          recipient_email: l.contact_email, website_url: l.website_url,
+          subject: SUBJECTS[Math.floor(seeded(i * 71 + 2) * SUBJECTS.length) % SUBJECTS.length],
+          opened: !!l.email_opened, opened_at: l.opened_at || null, open_count: l.open_count || 0,
+          device_type: l.email_opened ? dev[0] : '', os: l.email_opened ? dev[1] : '',
+          email_client: l.email_opened ? dev[2] : '', user_agent: l.email_opened ? dev[3] : '',
+          replied: !!l.replied, replied_at: l.replied_at || null,
+        };
+      });
+    return { stats: { total_opened: r.total_opens, unique_opens: r.opened }, all_tracking: rows };
+  },
+
+  sequences(from, to){
+    const r = this.report(from, to);
+    return { sequences: r.leads.filter(l => l.email_sent)
+      .sort((a,b) => b.email_sent_at.localeCompare(a.email_sent_at))
+      .slice(0, 60)
+      .map(l => ({
+        sequence_stage: l.sequence_stage || 1, recipient: l.contact_email,
+        subject: 'CNC turning job work \u2014 ' + l.company_name,
+        delivery_status: 'sent', sent_at: l.email_sent_at,
+        lead: { contact_email: l.contact_email, company_name: l.company_name,
+                email_opened: !!l.email_opened, replied: !!l.replied },
+      })) };
+  },
+
+  get hotLeads(){
+    const rank = l => (l.replied ? 400 : 0) + (l.open_count || 0) * 30 + l.score;
+    return this.corpus.filter(l => l.replied || l.email_opened)
+      .sort((a,b) => rank(b) - rank(a)).slice(0, 5)
+      .map(l => [l.company_name, l.city + ' · ' + l.country,
+                 l.replied ? 'Replied' : (l.open_count > 1 ? 'Opened ' + l.open_count + '×' : 'Opened'), l.score]);
+  },
 };
 
 function togglePreview(){
@@ -5016,11 +5334,12 @@ function applyPreview(){
   if(!PREVIEW) return;
   const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
   const t = SAMPLE.totals;
+  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '0%';
   set('statTotalLeads', t.leads.toLocaleString());
   set('statEmailsSent', t.emails);
   set('statFormsFilled', t.forms);
   set('statReplies', t.replies);
-  set('statLeadsChange', '+46 today');
+  set('statLeadsChange', '+' + t.newToday + ' today');
   set('statEmailsChange', `Today ${t.emails} · ${10 - t.emails} left today · ${SAMPLE.quota.pending_email} pending`);
   set('statFormsChange', `Today ${t.forms}`);
   set('statRepliesChange', `${t.opened} opens tracked`);
@@ -5028,12 +5347,20 @@ function applyPreview(){
   set('navLeadCount', t.leads.toLocaleString());
   set('navEmailCount', t.emails);
   set('navFormCount', t.forms);
-  set('emailTodaySent', t.emails);
-  set('emailOpenRate', '31%');
-  set('emailReplyRate', '9%');
+  set('emailTodaySent', t.sent.toLocaleString());   // the card is labelled Total Sent, not today's
+  set('emailOpenRate', pct(t.uniqueOpens, t.sent));
+  set('emailReplyRate', pct(t.replies, t.sent));
   set('trackingTotalOpens', t.opened);
-  set('trackingUniqueOpens', 148);
+  set('trackingUniqueOpens', t.uniqueOpens);
   renderQuota(SAMPLE.quota);
+
+  // the leads table reads allLeads directly, so point it at the sample corpus
+  if(window.allLeads !== SAMPLE.corpus){
+    allLeads = SAMPLE.corpus;
+    filteredLeads = [...allLeads];
+    if(typeof populateFilters === 'function') populateFilters();
+    if(document.getElementById('page-leads')?.classList.contains('active')) renderLeads();
+  }
 
   const hot = document.getElementById('hotLeadsList');
   if(hot) hot.innerHTML = SAMPLE.hotLeads.map(([name, place, state, score]) => `
