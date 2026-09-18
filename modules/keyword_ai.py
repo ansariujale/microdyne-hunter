@@ -144,7 +144,7 @@ def generate_keywords(count: int = 12) -> dict:
         "source": "none", "error": "",
     }
 
-    if not is_ai_available():
+    if not is_ai_available("keywords"):
         result["error"] = ("No AI provider is configured. Add an OpenRouter, Gemini or "
                            "Anthropic key under API Keys first.")
         return result
@@ -162,7 +162,7 @@ def generate_keywords(count: int = 12) -> dict:
     )
 
     try:
-        raw = ai_generate(prompt, max_tokens=1200)
+        raw = ai_generate(prompt, max_tokens=1200, purpose="keywords")
     except Exception as e:
         logger.error(f"[Keywords] Generation failed: {e}")
         result["error"] = f"The AI request failed: {e}"

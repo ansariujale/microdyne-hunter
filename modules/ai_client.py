@@ -5,17 +5,40 @@ Unified AI interface. Priority: OpenRouter -> Gemini -> Anthropic -> None
 
 import logging
 
+import config
 from config import GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY
 
 logger = logging.getLogger("microdynehunter.ai")
+
+
+def _openrouter_key(purpose: str = "") -> str:
+    """The OpenRouter key for this kind of work.
+
+    Read from config rather than the import-time copy so a key saved in the
+    admin panel takes effect without restarting the server.
+    """
+    if purpose == "keywords":
+        dedicated = (getattr(config, "OPENROUTER_API_KEY_KEYWORDS", "") or "").strip()
+        if dedicated:
+            return dedicated
+    return (getattr(config, "OPENROUTER_API_KEY", "") or "").strip()
 
 _gemini_model = None
 _anthropic_client = None
 
 
-def _call_openrouter(prompt: str, max_tokens: int, system: str = None) -> str | None:
+OPENROUTER_MODEL_DEFAULT = "google/gemini-2.5-flash-lite"
+
+
+def _openrouter_model() -> str:
+    return (getattr(config, "OPENROUTER_MODEL", "") or "").strip() or OPENROUTER_MODEL_DEFAULT
+
+
+def _call_openrouter(prompt: str, max_tokens: int, system: str = None,
+                     purpose: str = "") -> str | None:
     """Call OpenRouter API (OpenAI-compatible endpoint)."""
-    if not OPENROUTER_API_KEY:
+    api_key = _openrouter_key(purpose)
+    if not api_key:
         return None
     try:
         import httpx
@@ -27,11 +50,13 @@ def _call_openrouter(prompt: str, max_tokens: int, system: str = None) -> str | 
         resp = httpx.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": "google/gemini-2.0-flash-001",
+                # Overridable; gemini-2.0-flash-001 was retired from OpenRouter
+                # and every call was coming back 404 "no endpoints found".
+                "model": _openrouter_model(),
                 "max_tokens": min(max_tokens, 1500),
                 "temperature": 0.7,
                 "messages": messages,
@@ -75,14 +100,16 @@ def _get_anthropic():
     return _anthropic_client
 
 
-def ai_generate(prompt: str, max_tokens: int = 2000, system: str = None) -> str | None:
+def ai_generate(prompt: str, max_tokens: int = 2000, system: str = None,
+                purpose: str = "") -> str | None:
     """
     Generate text using available AI provider.
     Priority: OpenRouter -> Gemini -> Anthropic -> None
+    `purpose="keywords"` uses the dedicated keyword key when one is configured.
     Returns the text response or None.
     """
     # 1. Try OpenRouter first (currently working)
-    result = _call_openrouter(prompt, max_tokens, system)
+    result = _call_openrouter(prompt, max_tokens, system, purpose=purpose)
     if result:
         return result
 
@@ -117,10 +144,11 @@ def ai_generate(prompt: str, max_tokens: int = 2000, system: str = None) -> str 
     return None
 
 
-def is_ai_available() -> bool:
-    """Check if any AI provider is configured."""
+def is_ai_available(purpose: str = "") -> bool:
+    """Check if any AI provider is configured for this kind of work."""
+    anthropic_key = (getattr(config, "ANTHROPIC_API_KEY", "") or "")
     return (
-        bool(OPENROUTER_API_KEY)
-        or bool(GEMINI_API_KEY)
-        or (bool(ANTHROPIC_API_KEY) and "your" not in ANTHROPIC_API_KEY.lower())
+        bool(_openrouter_key(purpose))
+        or bool(getattr(config, "GEMINI_API_KEY", ""))
+        or (bool(anthropic_key) and "your" not in anthropic_key.lower())
     )

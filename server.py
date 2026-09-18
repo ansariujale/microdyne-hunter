@@ -99,8 +99,11 @@ agent_state = {
 
 # Banners the dashboard shows for a fixed number of seconds and then drops.
 AGENT_NOTICE_SECONDS = 10
+LEADS_DONE_MESSAGE = "Leads already collected."
+EMAIL_DONE_MESSAGE = "Email already sent."
 FORMS_DONE_MESSAGE = "Form already filled."
-ALL_DONE_MESSAGE = "All tasks have already been completed."
+REPORT_DONE_MESSAGE = "Report already generated."
+ALL_DONE_MESSAGE = "All tasks are already completed."
 
 
 def set_agent_notice(message: str, kind: str = "info", seconds: int = AGENT_NOTICE_SECONDS):
@@ -562,31 +565,36 @@ _EMAIL_STOP_REASONS = (
 )
 
 
+def _extraction_done_today() -> bool:
+    """Whether a batch has already been stored this business day.
+
+    The in-process marker covers this run; the lead count survives a restart.
+    Either being sure is enough, so a database that cannot answer will not
+    green-light a second scrape.
+    """
+    import config
+    from modules.database import get_leads_added_in_business_day
+    today = _current_business_date_str(config.BUSINESS_DAY_RESET_HOUR)
+    if agent_state.get("last_extraction_date") == today:
+        return True
+    try:
+        return get_leads_added_in_business_day(config.BUSINESS_DAY_RESET_HOUR) > 0
+    except Exception as e:
+        logger.warning(f"Couldn't check today's extraction: {e}")
+        return False
+
+
 def get_outstanding_work() -> dict:
     """What the agent can still do today. With every flag false there is nothing to run."""
-    import config
-    from modules.database import get_daily_quota_status, get_leads_added_in_business_day
+    from modules.database import get_daily_quota_status
 
     quota = get_daily_quota_status()
     email = quota["pending_email"] > 0 and quota["emails_remaining_today"] > 0
     forms = quota["pending_form"] > 0 and quota["forms_remaining_today"] > 0
 
-    extract = False
-    if quota["extraction_needed"]:
-        # Every stored lead has been contacted, so a fresh batch is the only work
-        # left, but only once per business day. Without this check, Restart would
-        # scrape again every time it was clicked.
-        today = _current_business_date_str(config.BUSINESS_DAY_RESET_HOUR)
-        # The marker covers this process; the lead count survives a restart. Either
-        # one being sure is enough, so a database that can't answer doesn't
-        # accidentally green-light a second extraction.
-        done_today = agent_state.get("last_extraction_date") == today
-        if not done_today:
-            try:
-                done_today = get_leads_added_in_business_day(config.BUSINESS_DAY_RESET_HOUR) > 0
-            except Exception as e:
-                logger.warning(f"Couldn't check today's extraction: {e}")
-        extract = not done_today
+    # A fresh batch is only work when every lead has been contacted and today's
+    # extraction has not run yet.
+    extract = quota["extraction_needed"] and not _extraction_done_today()
 
     return {"email": email, "forms": forms, "extract": extract,
             "any": bool(email or forms or extract), "quota": quota}
@@ -595,25 +603,13 @@ def get_outstanding_work() -> dict:
 def start_daily_cycle(trigger: str = "manual", force: bool = False) -> str:
     """Start one daily cycle in the background.
 
-    Returns "started", "already_running", or "nothing_to_do" when every task for
-    today is finished. In that last case the agent stays idle instead of
-    repeating work, and the dashboard shows why.
+    Returns "started" or "already_running". The cycle always walks its four
+    steps so each one can report its own state when it is reached; steps whose
+    work is already done are skipped rather than repeated.
     """
     with _cycle_start_lock:
         if agent_state["agent_loop_running"]:
             return "already_running"
-        if not force:
-            try:
-                work = get_outstanding_work()
-            except Exception as e:
-                # Can't tell from here, so let the cycle start and have each phase decide.
-                logger.warning(f"Couldn't check outstanding work: {e}")
-                work = None
-            if work and not work["any"]:
-                set_agent_notice(ALL_DONE_MESSAGE)
-                add_log(f"⏸ {ALL_DONE_MESSAGE} Staying idle — nothing will run again until "
-                        "new leads arrive or today's limits reset.", category="system")
-                return "nothing_to_do"
         agent_state["agent_loop_running"] = True
     threading.Thread(target=agent_loop_thread, args=(trigger,), daemon=True, name="daily-cycle").start()
     return "started"
@@ -744,7 +740,8 @@ def agent_loop_thread(trigger: str = "manual"):
     dashboard actions can't exceed them either.
     """
     import config
-    from modules.database import get_total_leads, get_daily_quota_status, release_stuck_form_leads
+    from modules.database import (get_total_leads, get_daily_quota_status, release_stuck_form_leads,
+                                  get_report_for_business_day, save_report)
     from modules.form_outreach import outreach_state
 
     agent_state["agent_loop_running"] = True
@@ -763,8 +760,17 @@ def agent_loop_thread(trigger: str = "manual"):
         return True
 
     completed = False
+    # Each step records whether it found its work already done. Nothing is
+    # announced before the step is reached and checked.
+    already_done = {"leads": False, "email": False, "forms": False, "report": False}
+
+    def announce(message, detail, category):
+        """Say, at the moment the step is reached, that its work was already done."""
+        set_agent_notice(message)
+        add_log(f"✓ {message} {detail}", category=category)
+
     try:
-        # ── PHASE 1: queue check → extract only if nothing is left ──
+        # ── STEP 1: leads ──────────────────────────────────────
         agent_state["current_step"] = "store"
         if not outreach_state.get("running"):
             released = release_stuck_form_leads()
@@ -773,12 +779,19 @@ def agent_loop_thread(trigger: str = "manual"):
 
         quota = get_daily_quota_status()
         _cache_quota(quota)
+        add_log("Step 1/4 — checking whether leads are available", category="lead")
+
         if not quota["extraction_needed"]:
             add_log(
                 f"✓ {quota['pending_email']} leads not yet emailed, {quota['pending_form']} forms not yet "
-                "submitted — skipping extraction and continuing with existing leads",
+                "submitted — working through the leads already stored",
                 category="lead",
             )
+        elif _extraction_done_today():
+            already_done["leads"] = True
+            announce(LEADS_DONE_MESSAGE,
+                     "Today's batch has already been extracted and every lead contacted.",
+                     "lead")
         else:
             add_log(f"No untouched leads left — extracting up to {config.DAILY_LEAD_TARGET} top-quality leads",
                     category="lead")
@@ -795,51 +808,73 @@ def agent_loop_thread(trigger: str = "manual"):
 
         agent_state["stats"]["leads_stored"] = get_total_leads()
         agent_state["completed_phases"].append("store")
-
-        # Forms already complete, so say so now at the start and skip the phase below.
-        # Only meaningful when extraction didn't just run, since a fresh batch brings
-        # its own forms to submit.
-        forms_done_notified = False
-        if not quota["extraction_needed"] and quota["pending_form"] <= 0:
-            set_agent_notice(FORMS_DONE_MESSAGE)
-            forms_done_notified = True
-
         if not _phase_pause():
             return
 
-        # ── PHASE 2: email ──
+        # ── STEP 2: email ──────────────────────────────────────
         agent_state["current_step"] = "email"
-        _run_email_phase()
+        add_log("Step 2/4 — checking whether the emails have been sent", category="email")
+        if get_daily_quota_status()["pending_email"] <= 0:
+            already_done["email"] = True
+            announce(EMAIL_DONE_MESSAGE, "Every stored lead has already been emailed.", "email")
+        else:
+            _run_email_phase()
         agent_state["completed_phases"].append("email")
         if not _phase_pause():
             return
 
-        # ── PHASE 3: forms ──
+        # ── STEP 3: forms ──────────────────────────────────────
         agent_state["current_step"] = "forms"
+        add_log("Step 3/4 — checking whether the contact forms have been filled", category="form")
         if get_daily_quota_status()["pending_form"] <= 0:
-            if not forms_done_notified:
-                set_agent_notice(FORMS_DONE_MESSAGE)
-            add_log(f"✓ {FORMS_DONE_MESSAGE} No contact form left to submit —"
-                    " skipping the form phase", category="form")
+            already_done["forms"] = True
+            announce(FORMS_DONE_MESSAGE, "No contact form is left to submit.", "form")
         else:
             _run_form_phase()
         agent_state["completed_phases"].append("forms")
         if not _phase_pause():
             return
 
-        # ── PHASE 4: summary ──
+        # ── STEP 4: report ─────────────────────────────────────
         agent_state["current_step"] = "report"
+        add_log("Step 4/4 — checking whether today's report has been generated", category="system")
         quota = get_daily_quota_status()
         _cache_quota(quota)
-        add_log(
-            f"📊 Today: {quota['emails_sent_today']}/{quota['email_limit']} emails, "
-            f"{quota['forms_submitted_today']}/{quota['form_limit']} forms | "
-            f"Still queued: {quota['pending_email']} to email, {quota['pending_form']} forms",
-            category="system",
-        )
-        if quota["extraction_needed"]:
-            add_log("All leads have been contacted — the next cycle will extract a fresh batch", category="system")
+
+        if get_report_for_business_day("daily_cycle", config.BUSINESS_DAY_RESET_HOUR):
+            already_done["report"] = True
+            announce(REPORT_DONE_MESSAGE, "Today's report is already on file.", "system")
+        else:
+            summary = {
+                "business_date": _current_business_date_str(config.BUSINESS_DAY_RESET_HOUR),
+                "emails_sent_today": quota["emails_sent_today"],
+                "email_limit": quota["email_limit"],
+                "forms_submitted_today": quota["forms_submitted_today"],
+                "form_limit": quota["form_limit"],
+                "pending_email": quota["pending_email"],
+                "pending_form": quota["pending_form"],
+                "total_leads": get_total_leads(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "trigger": trigger,
+            }
+            save_report("daily_cycle", summary)
+            add_log(
+                f"📊 Report generated — {quota['emails_sent_today']}/{quota['email_limit']} emails, "
+                f"{quota['forms_submitted_today']}/{quota['form_limit']} forms | "
+                f"Still queued: {quota['pending_email']} to email, {quota['pending_form']} forms",
+                category="system",
+            )
+
         agent_state["completed_phases"].append("report")
+
+        # ── Every step checked. Only now can this be said. ─────
+        if all(already_done.values()):
+            set_agent_notice(ALL_DONE_MESSAGE)
+            add_log(f"⏸ {ALL_DONE_MESSAGE} Nothing will run again until new leads arrive "
+                    "or today's limits reset.", category="system")
+        elif quota["extraction_needed"]:
+            add_log("All leads have been contacted — the next cycle will extract a fresh batch",
+                    category="system")
         completed = True
     except Exception as e:
         add_log(f"✗ Daily cycle error: {e}", "error", category="system")
@@ -2760,19 +2795,12 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             if outcome == "already_running":
                 self._json_response({"error": "Pipeline already running"}, 409)
                 return
-            if outcome == "nothing_to_do":
-                self._json_response({"status": "nothing_to_do", "notice": current_agent_notice()})
-                return
             self._json_response({"status": "pipeline_started"})
 
         elif path == "/api/start-agent":
             outcome = start_daily_cycle(trigger="started from dashboard")
             if outcome == "already_running":
                 self._json_response({"error": "Agent already running"}, 409)
-                return
-            if outcome == "nothing_to_do":
-                # Not an error: everything for today is done, so the agent stays idle.
-                self._json_response({"status": "nothing_to_do", "notice": current_agent_notice()})
                 return
             self._json_response({"status": "agent_started", "mode": "daily_cycle"})
 

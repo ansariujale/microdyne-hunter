@@ -955,7 +955,26 @@ def save_report(report_type: str, report_data: dict, actions: dict = None) -> No
         "report_type": report_type,
         "report_data": json.dumps(report_data),
         "actions_taken": json.dumps(actions) if actions else None,
+        # stamped here so the in-memory fallback can answer date questions too
+        "created_at": datetime.now(timezone.utc).isoformat(),
     })
+
+
+def get_report_for_business_day(report_type: str = "daily_cycle",
+                                reset_hour_local: int = 11) -> Optional[dict]:
+    """The report already saved for the current business day, if there is one."""
+    if not db:
+        return None
+    _, start_utc, end_utc = get_business_day_range(reset_hour_local=reset_hour_local)
+    try:
+        rows = db.select("intelligence_reports", filters={
+            "report_type": f"eq.{report_type}",
+            "and": f"(created_at.gte.{start_utc},created_at.lt.{end_utc})",
+        }, order="created_at.desc", limit=1)
+        return rows[0] if rows else None
+    except Exception as e:
+        logger.warning(f"Couldn't check today's report: {e}")
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════

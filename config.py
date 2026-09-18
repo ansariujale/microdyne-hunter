@@ -32,6 +32,11 @@ SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "M. Marediya")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+# Keyword generation runs on its own key so chat traffic and keyword traffic
+# bill and rate-limit separately. Falls back to the key above when unset.
+OPENROUTER_API_KEY_KEYWORDS = os.getenv("OPENROUTER_API_KEY_KEYWORDS", "")
+# OpenRouter model id. Override in .env if the default is ever retired.
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # ═══════════════════════════════════════════════════════════════
