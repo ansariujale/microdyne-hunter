@@ -14,6 +14,7 @@ import base64
 import random
 import threading
 import logging
+import uuid
 import webbrowser
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -93,7 +94,39 @@ agent_state = {
     "lead_target_override": None,
     "lead_target_override_business_date": None,
     "batch_state": None,  # cached {active,batch_id,start_utc_iso,lead_target}
+    "notice": None,       # transient banner for the dashboard, see set_agent_notice()
 }
+
+# Banners the dashboard shows for a fixed number of seconds and then drops.
+AGENT_NOTICE_SECONDS = 10
+FORMS_DONE_MESSAGE = "Form already filled."
+ALL_DONE_MESSAGE = "All tasks have already been completed."
+
+
+def set_agent_notice(message: str, kind: str = "info", seconds: int = AGENT_NOTICE_SECONDS):
+    """Raise a banner the dashboard shows for `seconds`, then hides on its own."""
+    agent_state["notice"] = {
+        "id": uuid.uuid4().hex, "message": message, "kind": kind,
+        "seconds": seconds, "raised_at": time.time(),
+    }
+
+
+def current_agent_notice():
+    """The live notice plus the time it has left, or None once it has run out.
+
+    Sending the remaining time rather than a plain flag keeps the ten seconds
+    measured from when the notice was raised, so a dashboard that polls late in
+    the window sees only the tail instead of restarting the countdown.
+    """
+    notice = agent_state.get("notice")
+    if not notice:
+        return None
+    remaining = notice["seconds"] - (time.time() - notice["raised_at"])
+    if remaining <= 0:
+        agent_state["notice"] = None
+        return None
+    return {"id": notice["id"], "message": notice["message"], "kind": notice["kind"],
+            "seconds": notice["seconds"], "remaining": round(remaining, 2)}
 
 MAX_LOG = 200  # keep last N log entries
 
@@ -511,14 +544,61 @@ _EMAIL_STOP_REASONS = (
 )
 
 
-def start_daily_cycle(trigger: str = "manual") -> bool:
-    """Start one daily cycle in the background. Returns False if one is already running."""
+def get_outstanding_work() -> dict:
+    """What the agent can still do today. With every flag false there is nothing to run."""
+    import config
+    from modules.database import get_daily_quota_status, get_leads_added_in_business_day
+
+    quota = get_daily_quota_status()
+    email = quota["pending_email"] > 0 and quota["emails_remaining_today"] > 0
+    forms = quota["pending_form"] > 0 and quota["forms_remaining_today"] > 0
+
+    extract = False
+    if quota["extraction_needed"]:
+        # Every stored lead has been contacted, so a fresh batch is the only work
+        # left, but only once per business day. Without this check, Restart would
+        # scrape again every time it was clicked.
+        today = _current_business_date_str(config.BUSINESS_DAY_RESET_HOUR)
+        # The marker covers this process; the lead count survives a restart. Either
+        # one being sure is enough, so a database that can't answer doesn't
+        # accidentally green-light a second extraction.
+        done_today = agent_state.get("last_extraction_date") == today
+        if not done_today:
+            try:
+                done_today = get_leads_added_in_business_day(config.BUSINESS_DAY_RESET_HOUR) > 0
+            except Exception as e:
+                logger.warning(f"Couldn't check today's extraction: {e}")
+        extract = not done_today
+
+    return {"email": email, "forms": forms, "extract": extract,
+            "any": bool(email or forms or extract), "quota": quota}
+
+
+def start_daily_cycle(trigger: str = "manual", force: bool = False) -> str:
+    """Start one daily cycle in the background.
+
+    Returns "started", "already_running", or "nothing_to_do" when every task for
+    today is finished. In that last case the agent stays idle instead of
+    repeating work, and the dashboard shows why.
+    """
     with _cycle_start_lock:
         if agent_state["agent_loop_running"]:
-            return False
+            return "already_running"
+        if not force:
+            try:
+                work = get_outstanding_work()
+            except Exception as e:
+                # Can't tell from here, so let the cycle start and have each phase decide.
+                logger.warning(f"Couldn't check outstanding work: {e}")
+                work = None
+            if work and not work["any"]:
+                set_agent_notice(ALL_DONE_MESSAGE)
+                add_log(f"⏸ {ALL_DONE_MESSAGE} Staying idle — nothing will run again until "
+                        "new leads arrive or today's limits reset.", category="system")
+                return "nothing_to_do"
         agent_state["agent_loop_running"] = True
     threading.Thread(target=agent_loop_thread, args=(trigger,), daemon=True, name="daily-cycle").start()
-    return True
+    return "started"
 
 
 def _email_sending_configured() -> bool:
@@ -692,10 +772,20 @@ def agent_loop_thread(trigger: str = "manual"):
             _cache_quota(quota)
             add_log(f"✓ Extraction finished — {added} new leads stored "
                     f"({quota['pending_email']} to email, {quota['pending_form']} forms to submit)", category="lead")
+            agent_state["last_extraction_date"] = _current_business_date_str(config.BUSINESS_DAY_RESET_HOUR)
             agent_state["current_step"] = "store"
 
         agent_state["stats"]["leads_stored"] = get_total_leads()
         agent_state["completed_phases"].append("store")
+
+        # Forms already complete, so say so now at the start and skip the phase below.
+        # Only meaningful when extraction didn't just run, since a fresh batch brings
+        # its own forms to submit.
+        forms_done_notified = False
+        if not quota["extraction_needed"] and quota["pending_form"] <= 0:
+            set_agent_notice(FORMS_DONE_MESSAGE)
+            forms_done_notified = True
+
         if not _phase_pause():
             return
 
@@ -708,7 +798,13 @@ def agent_loop_thread(trigger: str = "manual"):
 
         # ── PHASE 3: forms ──
         agent_state["current_step"] = "forms"
-        _run_form_phase()
+        if get_daily_quota_status()["pending_form"] <= 0:
+            if not forms_done_notified:
+                set_agent_notice(FORMS_DONE_MESSAGE)
+            add_log(f"✓ {FORMS_DONE_MESSAGE} No contact form left to submit —"
+                    " skipping the form phase", category="form")
+        else:
+            _run_form_phase()
         agent_state["completed_phases"].append("forms")
         if not _phase_pause():
             return
@@ -775,7 +871,9 @@ def daily_scheduler_thread():
                                            second=0, microsecond=0)
                 day = _current_business_date_str(config.BUSINESS_DAY_RESET_HOUR)
                 if day != last_started_day and now_local >= run_at:
-                    if start_daily_cycle(trigger="auto daily run"):
+                    # "nothing_to_do" also marks the day: re-checking every minute
+                    # would only raise the same notice again.
+                    if start_daily_cycle(trigger="auto daily run") != "already_running":
                         last_started_day = day
         except Exception as e:
             logger.error(f"[Scheduler] {e}")
@@ -1604,6 +1702,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "workers": agent_state.get("worker_status", {}),
                 "completed_phases": agent_state.get("completed_phases", []),
                 "daily_reset_notice": agent_state.get("daily_reset_notice"),
+                "notice": current_agent_notice(),
                 "quota": get_cached_quota(),
             })
 
@@ -2622,14 +2721,24 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             self._json_response({"status": "started", "step": step})
 
         elif path == "/api/run-pipeline":
-            if agent_state["pipeline_running"] or not start_daily_cycle(trigger="full pipeline"):
+            outcome = "already_running" if agent_state["pipeline_running"] else start_daily_cycle(
+                trigger="full pipeline")
+            if outcome == "already_running":
                 self._json_response({"error": "Pipeline already running"}, 409)
+                return
+            if outcome == "nothing_to_do":
+                self._json_response({"status": "nothing_to_do", "notice": current_agent_notice()})
                 return
             self._json_response({"status": "pipeline_started"})
 
         elif path == "/api/start-agent":
-            if not start_daily_cycle(trigger="started from dashboard"):
+            outcome = start_daily_cycle(trigger="started from dashboard")
+            if outcome == "already_running":
                 self._json_response({"error": "Agent already running"}, 409)
+                return
+            if outcome == "nothing_to_do":
+                # Not an error: everything for today is done, so the agent stays idle.
+                self._json_response({"status": "nothing_to_do", "notice": current_agent_notice()})
                 return
             self._json_response({"status": "agent_started", "mode": "daily_cycle"})
 

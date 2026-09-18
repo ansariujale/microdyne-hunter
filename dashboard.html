@@ -1177,6 +1177,27 @@
     .nav-toggle .bars i{transition:none;}
   }
 
+  /* ═══ AGENT NOTICE ═══
+     Raised by the server with a lifetime; hidden again when that runs out. */
+  .agent-notice{
+    position:fixed;top:70px;left:50%;z-index:120;
+    display:flex;align-items:center;gap:11px;padding:11px 18px;border-radius:12px;
+    font-size:13.5px;font-weight:500;letter-spacing:-0.012em;color:var(--text);
+    background:var(--glass-strong);-webkit-backdrop-filter:blur(26px) saturate(170%);
+    backdrop-filter:blur(26px) saturate(170%);
+    border:1px solid var(--border-light);box-shadow:0 18px 44px -20px rgba(0,0,0,0.72);
+    opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,-10px);
+    transition:opacity 0.28s ease,transform 0.32s cubic-bezier(.16,1,.3,1),visibility 0.28s;
+  }
+  .agent-notice.show{opacity:1;visibility:visible;transform:translate(-50%,0);}
+  .agent-notice .an-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 4px var(--accent-soft);flex-shrink:0;}
+  @media(max-width:768px){
+    .agent-notice{left:16px;right:16px;transform:translateY(-10px);justify-content:center;text-align:center;}
+    .agent-notice.show{transform:translateY(0);}
+  }
+  @media(prefers-reduced-motion:reduce){.agent-notice{transition:opacity 0.2s ease,visibility 0.2s;}}
+
 </style>
 </head>
 <body>
@@ -1208,6 +1229,9 @@
   <div class="grain"></div>
 </div>
 <div class="toast-container" id="toastContainer"></div>
+<div class="agent-notice" id="agentNotice" role="status" aria-live="polite">
+  <span class="an-dot"></span><span class="an-text"></span>
+</div>
 
 <!-- HEADER -->
 <div class="header">
@@ -2639,6 +2663,27 @@ function _setTableLoading(tbodyId, colspan){
   const tbody = document.getElementById(tbodyId);
   if(!tbody) return;
   tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;color:var(--text-dim);padding:20px;">Loading...</td></tr>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AGENT NOTICE — "Form already filled." / "All tasks have already been completed."
+// The server stamps each notice with an id and the seconds it has left, so the
+// countdown runs from when the agent raised it, not from when we happened to poll.
+// ═══════════════════════════════════════════════════════════════
+let _noticeId = null, _noticeTimer = null;
+
+function renderAgentNotice(notice){
+  const el = document.getElementById('agentNotice');
+  if(!el || !notice || !notice.message) return;
+  if(notice.id === _noticeId) return;   // already on screen and counting down
+  _noticeId = notice.id;
+  el.querySelector('.an-text').textContent = notice.message;
+  el.classList.add('show');
+  clearTimeout(_noticeTimer);
+  _noticeTimer = setTimeout(() => {
+    el.classList.remove('show');
+    _noticeTimer = null;
+  }, Math.max(0, (notice.remaining ?? notice.seconds ?? 10) * 1000));
 }
 
 function renderDailyResetNotice(notice){
@@ -4775,6 +4820,7 @@ async function pollStatus(){
   const data = await api('/api/status');
   if(!data) return;
   renderDailyResetNotice(data.daily_reset_notice);
+  renderAgentNotice(data.notice);
   renderQuota(data.quota);
   applyPreview();
   // Update agent status indicator
@@ -5537,6 +5583,13 @@ async function startAgent(){
   if(serverConnected){
     const result = await api('/api/start-agent', 'POST');
     if(result && result.error){ addLog('Error: '+result.error); return; }
+    if(result && result.status === 'nothing_to_do'){
+      // Everything for today is done — show why and leave the agent idle
+      // rather than running the finished phases again.
+      renderAgentNotice(result.notice);
+      addLog(result.notice?.message || 'All tasks have already been completed.');
+      return;
+    }
   }
   agentRunning = true;
   agentStartTime = Date.now();

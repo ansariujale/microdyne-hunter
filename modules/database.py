@@ -175,6 +175,42 @@ class InMemoryDB:
                 a, b = as_str(value), val
             return (a > b) - (a < b)
 
+        def matches(value, condition: str) -> bool:
+            # PostgREST operators: eq., neq., gte., lte., lt., in.()
+            if condition.startswith("eq."):
+                return as_str(value) == condition[3:]
+            if condition.startswith("neq."):
+                return value is not None and as_str(value) != condition[4:]
+            if condition.startswith("gte."):
+                c = compare(value, condition[4:])
+                return c is not None and c >= 0
+            if condition.startswith("lte."):
+                c = compare(value, condition[4:])
+                return c is not None and c <= 0
+            if condition.startswith("lt."):
+                c = compare(value, condition[3:])
+                return c is not None and c < 0
+            if condition.startswith("in.(") and condition.endswith(")"):
+                vals = [v.strip().strip('"') for v in condition[4:-1].split(",")]
+                return as_str(value) in vals
+            return as_str(value) == condition
+
+        def split_clauses(body: str) -> list[str]:
+            """Split an and=(...) body on commas that aren't inside a nested in.(...)."""
+            parts, depth, buf = [], 0, []
+            for ch in body:
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                if ch == "," and depth == 0:
+                    parts.append("".join(buf))
+                    buf = []
+                else:
+                    buf.append(ch)
+            parts.append("".join(buf))
+            return [p for p in (x.strip() for x in parts) if p]
+
         result = []
         for row in rows:
             match = True
@@ -182,27 +218,18 @@ class InMemoryDB:
                 if not isinstance(condition, str):
                     match = False
                     break
-                value = row.get(key)
-
-                # Parse PostgREST operators: eq., neq., gte., lte., lt., in.()
-                if condition.startswith("eq."):
-                    match = as_str(value) == condition[3:]
-                elif condition.startswith("neq."):
-                    match = value is not None and as_str(value) != condition[4:]
-                elif condition.startswith("gte."):
-                    c = compare(value, condition[4:])
-                    match = c is not None and c >= 0
-                elif condition.startswith("lte."):
-                    c = compare(value, condition[4:])
-                    match = c is not None and c <= 0
-                elif condition.startswith("lt."):
-                    c = compare(value, condition[3:])
-                    match = c is not None and c < 0
-                elif condition.startswith("in.(") and condition.endswith(")"):
-                    vals = [v.strip().strip('"') for v in condition[4:-1].split(",")]
-                    match = as_str(value) in vals
+                if key == "and" and condition.startswith("(") and condition.endswith(")"):
+                    # and=(created_at.gte.X,created_at.lt.Y) — every clause must hold.
+                    # Without this a date-range filter matched nothing and callers
+                    # such as get_leads_added_in_business_day always saw zero.
+                    match = True
+                    for clause in split_clauses(condition[1:-1]):
+                        column, _, sub = clause.partition(".")
+                        if not sub or not matches(row.get(column), sub):
+                            match = False
+                            break
                 else:
-                    match = as_str(value) == condition
+                    match = matches(row.get(key), condition)
 
                 if not match:
                     break
