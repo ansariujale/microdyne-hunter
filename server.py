@@ -2194,6 +2194,53 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(pixel)
 
+        elif path == "/api/trends":
+            # Real daily history for the dashboard sparklines.
+            from modules.database import db
+            params = parse_qs(parsed.query)
+            try:
+                days = max(2, min(30, int(params.get("days", ["14"])[0])))
+            except ValueError:
+                days = 14
+            if not db:
+                self._json_response({"days": [], "series": {}})
+                return
+            try:
+                start = (datetime.now(timezone.utc) - timedelta(days=days - 1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0)
+                start_iso = start.isoformat().replace("+00:00", "Z")
+                buckets = [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
+                series = {k: {d: 0 for d in buckets} for k in ("leads", "emails", "forms", "opens", "replies")}
+
+                def bucket(rows, key, field):
+                    for row in rows or []:
+                        stamp = (row.get(field) or "")[:10]
+                        if stamp in series[key]:
+                            series[key][stamp] += 1
+
+                bucket(db.select("leads", columns="created_at",
+                                 filters={"created_at": f"gte.{start_iso}"}, limit=10000), "leads", "created_at")
+                bucket(db.select("outreach_log", columns="sent_at",
+                                 filters={"channel": "eq.email", "delivery_status": "eq.sent",
+                                          "sent_at": f"gte.{start_iso}"}, limit=10000), "emails", "sent_at")
+                bucket(db.select("leads", columns="form_filled_at",
+                                 filters={"form_filled": "eq.true", "form_filled_at": f"gte.{start_iso}"},
+                                 limit=10000), "forms", "form_filled_at")
+                bucket(db.select("email_tracking", columns="opened_at",
+                                 filters={"opened": "eq.true", "opened_at": f"gte.{start_iso}"},
+                                 limit=10000), "opens", "opened_at")
+                bucket(db.select("leads", columns="replied_at",
+                                 filters={"replied": "eq.true", "replied_at": f"gte.{start_iso}"},
+                                 limit=10000), "replies", "replied_at")
+
+                self._json_response({
+                    "days": buckets,
+                    "series": {k: [v[d] for d in buckets] for k, v in series.items()},
+                })
+            except Exception as e:
+                logger.warning(f"Trends unavailable: {e}")
+                self._json_response({"days": [], "series": {}})
+
         elif path == "/api/report-data":
             from modules.database import db
             params = parse_qs(parsed.query)

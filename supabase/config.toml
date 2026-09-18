@@ -1,0 +1,6 @@
+# Supabase project config (used by the Supabase CLI)
+project_id = "microdyne-hunter"
+
+[functions.email-open]
+# Mail clients fetch the pixel with no Authorization header.
+verify_jwt = false

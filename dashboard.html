@@ -7,7 +7,7 @@
 <title>MicrodyneHunter v2 — Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script>document.documentElement.setAttribute('data-theme',localStorage.getItem('mh-theme')||'dark');</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
@@ -946,6 +946,171 @@
     .ambient .blob,.ambient .spin-slow,.ambient .spin-rev{animation:none !important;}
   }
 
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     V3 — LIVING GLASS
+     Indigo/violet signal · fused page heroes · animated sparklines
+     Slow-breathing gradient field with flowing hairline geometry
+     ═══════════════════════════════════════════════════════════════════════ */
+  :root,[data-theme="dark"]{
+    --accent:#6d7cff;--accent-2:#a06cff;--accent-3:#ff6fae;
+    --accent-soft:rgba(109,124,255,0.14);--accent-line:rgba(109,124,255,0.38);
+    --green:#6d7cff;--green-bg:rgba(109,124,255,0.13);--green-border:rgba(109,124,255,0.32);
+    --orange:#ff9f68;--orange-bg:rgba(255,159,104,0.12);--orange-border:rgba(255,159,104,0.3);
+    --purple:#a06cff;--purple-bg:rgba(160,108,255,0.12);--purple-border:rgba(160,108,255,0.28);
+    --ring:0 0 0 3px rgba(109,124,255,0.3);
+    --btn-text-on-green:#ffffff;--btn-text-on-blue:#ffffff;
+    --blob-1:rgba(109,124,255,0.26);--blob-2:rgba(55,191,166,0.18);--blob-3:rgba(160,108,255,0.22);
+    --blob-4:rgba(255,111,174,0.16);
+    --bg-grid-1:rgba(109,124,255,0.06);--bg-grid-2:rgba(160,108,255,0.045);
+  }
+  [data-theme="light"]{
+    --accent:#4b57e8;--accent-2:#7d4fe0;--accent-3:#e8467f;
+    --accent-soft:rgba(75,87,232,0.09);--accent-line:rgba(75,87,232,0.3);
+    --green:#4b57e8;--green-bg:rgba(75,87,232,0.08);--green-border:rgba(75,87,232,0.24);
+    --orange:#c9711f;--orange-bg:rgba(201,113,31,0.09);--orange-border:rgba(201,113,31,0.24);
+    --purple:#7d4fe0;--purple-bg:rgba(125,79,224,0.08);--purple-border:rgba(125,79,224,0.22);
+    --ring:0 0 0 3px rgba(75,87,232,0.2);
+    --blob-1:rgba(75,87,232,0.18);--blob-2:rgba(15,143,128,0.13);--blob-3:rgba(125,79,224,0.16);
+    --blob-4:rgba(232,70,127,0.12);
+    --bg-grid-1:rgba(75,87,232,0.05);--bg-grid-2:rgba(125,79,224,0.035);
+  }
+
+  /* ── Living field: slower drift + breathing hue, extra layers ── */
+  .ambient .blob{filter:blur(110px);mix-blend-mode:normal;}
+  .ambient .b1{width:760px;height:760px;top:-280px;left:-200px;
+    animation:drift1 96s cubic-bezier(.45,0,.55,1) infinite alternate,breathe 44s ease-in-out infinite;}
+  .ambient .b2{width:680px;height:680px;bottom:-300px;right:-160px;
+    animation:drift2 124s cubic-bezier(.45,0,.55,1) infinite alternate,breathe 58s ease-in-out infinite -14s;}
+  .ambient .b3{width:600px;height:600px;top:28%;right:14%;
+    animation:drift3 108s cubic-bezier(.45,0,.55,1) infinite alternate,breathe 50s ease-in-out infinite -26s;}
+  .ambient .b4{position:absolute;border-radius:50%;filter:blur(120px);width:520px;height:520px;
+    bottom:12%;left:22%;background:var(--blob-4);
+    animation:drift4 138s cubic-bezier(.45,0,.55,1) infinite alternate,breathe 64s ease-in-out infinite -8s;}
+  @keyframes drift1{0%{transform:translate3d(0,0,0)}100%{transform:translate3d(220px,180px,0)}}
+  @keyframes drift2{0%{transform:translate3d(0,0,0)}100%{transform:translate3d(-260px,-140px,0)}}
+  @keyframes drift3{0%{transform:translate3d(0,0,0)}100%{transform:translate3d(-190px,230px,0)}}
+  @keyframes drift4{0%{transform:translate3d(0,0,0)}100%{transform:translate3d(180px,-200px,0)}}
+  @keyframes breathe{0%,100%{opacity:0.55;filter:blur(110px) hue-rotate(0deg)}
+                     50%{opacity:1;filter:blur(130px) hue-rotate(18deg)}}
+  .ambient .lines{opacity:1;}
+  .ambient .lines .flow{stroke-dasharray:7 13;animation:flow 40s linear infinite;}
+  .ambient .lines .flow.slow{animation-duration:78s;animation-direction:reverse;}
+  @keyframes flow{to{stroke-dashoffset:-400}}
+  .ambient .grain{opacity:0.05;}
+
+  /* ── Fused page hero ── */
+  .hero{position:relative;margin:-36px -40px 26px;padding:44px 40px 30px;overflow:hidden;
+    border-bottom:1px solid var(--glass-brd);isolation:isolate;}
+  .hero::after{content:'';position:absolute;inset:0;z-index:-2;
+    background:
+      radial-gradient(120% 150% at 8% -40%,var(--h1),transparent 62%),
+      radial-gradient(90% 130% at 82% -20%,var(--h2),transparent 58%);
+    opacity:0.9;}
+  .hero::before{content:'';position:absolute;inset:0;z-index:-1;backdrop-filter:blur(60px) saturate(150%);
+    -webkit-backdrop-filter:blur(60px) saturate(150%);
+    mask-image:linear-gradient(180deg,#000 0%,#000 55%,transparent 100%);}
+  .hero-waves{position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;opacity:0.5;}
+  .hero-waves path{fill:none;stroke:var(--line-stroke);vector-effect:non-scaling-stroke;}
+  .hero-inner{position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:26px;
+    flex-wrap:wrap;max-width:1560px;}
+  .hero-eyebrow{font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:500;text-transform:uppercase;
+    letter-spacing:0.22em;color:var(--text-dim);display:block;margin-bottom:14px;}
+  .hero .page-title{font-size:38px;font-weight:500;letter-spacing:-0.04em;line-height:1.04;margin-bottom:10px;}
+  .hero .page-title em{font-family:'Instrument Serif',Georgia,serif;font-style:italic;font-weight:400;
+    letter-spacing:-0.02em;
+    background:linear-gradient(100deg,var(--accent),var(--accent-2) 55%,var(--accent-3));
+    -webkit-background-clip:text;background-clip:text;color:transparent;padding-right:2px;}
+  .hero .page-sub{font-size:13.5px;color:var(--text-muted);margin-bottom:0;max-width:62ch;}
+  .hero-side{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .hero-pill{display:inline-flex;align-items:center;gap:9px;height:38px;padding:0 15px;border-radius:999px;
+    background:var(--glass-soft);border:1px solid var(--glass-brd);backdrop-filter:blur(18px) saturate(160%);
+    -webkit-backdrop-filter:blur(18px) saturate(160%);box-shadow:0 1px 0 rgba(255,255,255,0.10) inset;}
+  .hero-pill .hp-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft);flex-shrink:0;}
+  .hero-pill .hp-k{font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.16em;
+    text-transform:uppercase;color:var(--text-dim);}
+  .hero-pill .hp-v{font-family:'Geist Mono',monospace;font-size:14px;color:var(--text);font-weight:500;
+    font-variant-numeric:tabular-nums;letter-spacing:-0.02em;}
+  /* per-page hues */
+  .hero-dashboard{--h1:rgba(109,124,255,0.30);--h2:rgba(160,108,255,0.22);}
+  .hero-leads{--h1:rgba(55,191,166,0.26);--h2:rgba(109,124,255,0.24);}
+  .hero-email{--h1:rgba(160,108,255,0.28);--h2:rgba(255,111,174,0.22);}
+  .hero-forms{--h1:rgba(255,111,174,0.24);--h2:rgba(255,159,104,0.22);}
+  .hero-reports{--h1:rgba(55,191,166,0.24);--h2:rgba(109,124,255,0.26);}
+  .hero-sources{--h1:rgba(160,108,255,0.24);--h2:rgba(55,191,166,0.22);}
+  .hero-funnel{--h1:rgba(109,124,255,0.28);--h2:rgba(55,191,166,0.24);}
+  .hero-pipeline{--h1:rgba(255,111,174,0.22);--h2:rgba(109,124,255,0.28);}
+  [data-theme="light"] .hero{border-bottom-color:rgba(20,23,28,0.07);}
+  [data-theme="light"] .hero::after{opacity:0.75;}
+
+  /* ── Console: one aligned row, no orphan text ── */
+  .console-head{display:grid;grid-template-columns:1fr auto;align-items:center;gap:22px;}
+  .console-status{display:flex;align-items:center;gap:15px;margin-top:14px;}
+  .console-actions{flex-direction:row;align-items:center;gap:14px;}
+  .console-hint{text-align:right;max-width:170px;order:-1;}
+  .beacon{width:40px;height:40px;}
+  .beacon i{width:10px;height:10px;}
+  .agent-hero-status{font-size:25px;letter-spacing:-0.04em;}
+  .console-meta{margin-top:9px;}
+  @media(max-width:760px){
+    .console-head{grid-template-columns:1fr;}
+    .console-actions{justify-content:space-between;width:100%;}
+    .console-hint{text-align:left;max-width:none;}
+  }
+
+  /* ── KPI cards with live sparklines ── */
+  .stat-card{padding-bottom:0;display:flex;flex-direction:column;min-height:132px;}
+  .stat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .stat-trend{font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:0.06em;padding:3px 7px;
+    border-radius:6px;background:var(--glass-soft);border:1px solid var(--glass-brd);color:var(--text-dim);
+    white-space:nowrap;}
+  .stat-trend.up{color:var(--cyan);border-color:var(--cyan-border);background:var(--cyan-bg);}
+  .stat-trend.down{color:var(--accent-3);border-color:rgba(255,111,174,0.3);background:rgba(255,111,174,0.1);}
+  .stat-change{margin-bottom:10px;}
+  .spark{display:block;width:calc(100% + 36px);margin:auto -18px 0;height:46px;}
+  .spark path.line{fill:none;stroke:var(--accent);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;
+    vector-effect:non-scaling-stroke;}
+  .spark path.area{stroke:none;}
+  .spark .dot{fill:var(--accent);}
+  .stat-card.blue .spark path.line,.stat-card.blue .spark .dot{stroke:var(--purple);fill:var(--purple);}
+  .stat-card.blue .spark path.line{fill:none;}
+  .stat-card.purple .spark path.line,.stat-card.purple .spark .dot{stroke:var(--cyan);fill:var(--cyan);}
+  .stat-card.purple .spark path.line{fill:none;}
+  .stat-card.orange .spark path.line,.stat-card.orange .spark .dot{stroke:var(--accent-3);fill:var(--accent-3);}
+  .stat-card.orange .spark path.line{fill:none;}
+  .spark.draw path.line{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);
+    animation:draw 1.5s cubic-bezier(.16,1,.3,1) forwards;}
+  .spark.draw path.area{opacity:0;animation:fadeArea 1.2s ease-out 0.45s forwards;}
+  .spark.draw .dot{opacity:0;animation:fadeArea 0.5s ease-out 1.25s forwards;}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  @keyframes fadeArea{to{opacity:1}}
+
+  /* ── More glass ── */
+  .panel,.funnel-chart-card{backdrop-filter:blur(34px) saturate(180%);-webkit-backdrop-filter:blur(34px) saturate(180%);}
+  .stat-card{backdrop-filter:blur(30px) saturate(175%);-webkit-backdrop-filter:blur(30px) saturate(175%);}
+  .panel,.stat-card,.funnel-chart-card,.funnel-tab,.pipeline-step,.table-wrap{
+    box-shadow:var(--glass-shadow),0 0 0 1px rgba(255,255,255,0.02) inset;}
+  .btn-green,.start-btn.go{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;
+    box-shadow:0 1px 0 rgba(255,255,255,0.28) inset,0 12px 30px -14px var(--accent);}
+  .btn-green:hover,.start-btn.go:hover{filter:brightness(1.08) saturate(1.05);}
+  .chat-msg.user .chat-msg-bubble,.chat-send-btn{background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    color:#fff;}
+  .gauge-svg{filter:drop-shadow(0 0 12px rgba(109,124,255,0.22));}
+  .nav-item.active::before{background:linear-gradient(180deg,var(--accent),var(--accent-2));}
+
+  @media(max-width:768px){
+    .hero{margin:-20px -16px 20px;padding:26px 16px 22px;}
+    .hero .page-title{font-size:27px;}
+    .hero-inner{gap:16px;}
+    .hero-side{width:100%;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    .ambient .blob,.ambient .lines .flow{animation:none !important;}
+    .spark.draw path.line,.spark.draw path.area,.spark.draw .dot{animation:none !important;
+      stroke-dashoffset:0 !important;opacity:1 !important;}
+  }
+
 </style>
 </head>
 <body>
@@ -954,16 +1119,25 @@
   <div class="blob b1"></div>
   <div class="blob b2"></div>
   <div class="blob b3"></div>
+  <div class="blob b4"></div>
   <svg class="lines" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
     <circle class="spin-slow" cx="1180" cy="190" r="240" stroke-dasharray="2 10"/>
     <circle cx="1180" cy="190" r="150"/>
+    <circle cx="1180" cy="190" r="92"/>
     <circle class="spin-rev" cx="210" cy="720" r="300" stroke-dasharray="1 14"/>
     <circle cx="210" cy="720" r="196"/>
-    <path d="M-40 640 C 320 520, 560 760, 900 600 S 1360 420, 1520 520" stroke-dasharray="3 9"/>
-    <path d="M-40 300 C 300 220, 620 420, 980 300" />
-    <rect class="spin-slow" x="620" y="80" width="150" height="150" rx="34" stroke-dasharray="4 10"/>
+    <circle cx="210" cy="720" r="112"/>
+    <path class="flow" d="M-60 610 C 300 470, 560 760, 900 590 S 1360 400, 1520 500"/>
+    <path class="flow slow" d="M-60 660 C 300 520, 560 810, 900 640 S 1360 450, 1520 550"/>
+    <path class="flow" d="M-60 710 C 300 570, 560 860, 900 690 S 1360 500, 1520 600"/>
+    <path d="M-60 290 C 300 210, 620 410, 980 290 S 1340 170, 1520 250"/>
+    <path class="flow slow" d="M-60 340 C 300 260, 620 460, 980 340 S 1340 220, 1520 300"/>
+    <path d="M-60 120 C 420 60, 760 250, 1520 90" stroke-dasharray="2 12"/>
+    <rect class="spin-slow" x="600" y="60" width="180" height="180" rx="44" stroke-dasharray="4 10"/>
+    <rect class="spin-rev" x="980" y="560" width="220" height="220" rx="60" stroke-dasharray="3 12"/>
     <line x1="0" y1="118" x2="1440" y2="118"/>
     <line x1="1080" y1="0" x2="1080" y2="900" stroke-dasharray="2 12"/>
+    <line x1="330" y1="0" x2="330" y2="900" stroke-dasharray="1 16"/>
   </svg>
   <div class="grain"></div>
 </div>
@@ -1047,6 +1221,17 @@
 
     <!-- ═══════ DASHBOARD ═══════ -->
     <div class="page active" id="page-dashboard">
+      <header class="hero hero-dashboard">
+        <svg class="hero-waves" viewBox="0 0 1200 240" preserveAspectRatio="none"><path d="M0 150 C 200 90, 380 200, 600 140 S 1000 60, 1200 120"/><path d="M0 182 C 220 122, 400 232, 620 172 S 1010 92, 1200 152"/><path d="M0 214 C 240 154, 420 264, 640 204 S 1020 124, 1200 184"/></svg>
+        <div class="hero-inner">
+          <div>
+            <span class="hero-eyebrow">Microdyne Engineering · Command Center</span>
+            <h1 class="page-title">Today at <em>a glance</em></h1>
+            <p class="page-sub">One capped cycle a day — extract, email, submit forms, then hold the rest for tomorrow</p>
+          </div>
+          <div class="hero-side"><span class="hero-pill"><span class="hp-dot"></span><span class="hp-k">Leads</span><span class="hp-v"><span id="heroPillLeads">0</span></span></span><span class="hero-pill"><span class="hp-dot"></span><span class="hp-k">Queued</span><span class="hp-v"><span id="heroPillQueue">0</span></span></span></div>
+        </div>
+      </header>
       <div id="dailyResetNotice" class="alert alert-blue" style="display:none;margin-bottom:12px;"></div>
 
       <!-- CONSOLE + GAUGES -->
@@ -1169,23 +1354,48 @@
       <!-- STATS ROW -->
       <div class="stats-row">
         <div class="stat-card green">
-          <div class="stat-label">Total Leads</div>
-          <div class="stat-value" id="statTotalLeads">0</div>
+          <div class="stat-head">
+            <div>
+              <div class="stat-label">Total Leads</div>
+              <div class="stat-value" id="statTotalLeads">0</div>
+            </div>
+            <span class="stat-trend" id="trendLeads">—</span>
+          </div>
           <div class="stat-change up" id="statLeadsChange">+0 today</div>
+          <svg class="spark" id="sparkLeads" viewBox="0 0 220 46" preserveAspectRatio="none"></svg>
         </div>
         <div class="stat-card blue">
-          <div class="stat-label">Emails Sent</div>
-          <div class="stat-value" id="statEmailsSent">0</div>
+          <div class="stat-head">
+            <div>
+              <div class="stat-label">Emails Sent</div>
+              <div class="stat-value" id="statEmailsSent">0</div>
+            </div>
+            <span class="stat-trend" id="trendEmails">—</span>
+          </div>
           <div class="stat-change up" id="statEmailsChange">+0 today</div>
+          <svg class="spark" id="sparkEmails" viewBox="0 0 220 46" preserveAspectRatio="none"></svg>
         </div>
         <div class="stat-card purple">
-          <div class="stat-label">Forms Filled</div>
-          <div class="stat-value" id="statFormsFilled">0</div>
+          <div class="stat-head">
+            <div>
+              <div class="stat-label">Forms Filled</div>
+              <div class="stat-value" id="statFormsFilled">0</div>
+            </div>
+            <span class="stat-trend" id="trendForms">—</span>
+          </div>
           <div class="stat-change up" id="statFormsChange">+0 today</div>
+          <svg class="spark" id="sparkForms" viewBox="0 0 220 46" preserveAspectRatio="none"></svg>
         </div>
         <div class="stat-card orange">
-          <div class="stat-label">Replies</div>
-          <div class="stat-value" id="statReplies">0</div>
+          <div class="stat-head">
+            <div>
+              <div class="stat-label">Replies</div>
+              <div class="stat-value" id="statReplies">0</div>
+            </div>
+            <span class="stat-trend" id="trendReplies">—</span>
+          </div>
+          <div class="stat-change" id="statRepliesChange">&nbsp;</div>
+          <svg class="spark" id="sparkReplies" viewBox="0 0 220 46" preserveAspectRatio="none"></svg>
         </div>
       </div>
 
@@ -1210,8 +1420,17 @@
 
     <!-- ═══════ LEADS ═══════ -->
     <div class="page" id="page-leads">
-      <div class="page-title">Lead Database</div>
-      <div class="page-sub">All scraped leads with dedup — <span id="leadTotalCount">0</span> total</div>
+      <header class="hero hero-leads">
+        <svg class="hero-waves" viewBox="0 0 1200 240" preserveAspectRatio="none"><path d="M0 150 C 200 90, 380 200, 600 140 S 1000 60, 1200 120"/><path d="M0 182 C 220 122, 400 232, 620 172 S 1010 92, 1200 152"/><path d="M0 214 C 240 154, 420 264, 640 204 S 1020 124, 1200 184"/></svg>
+        <div class="hero-inner">
+          <div>
+            <span class="hero-eyebrow">Pipeline · Database</span>
+            <h1 class="page-title">Lead <em>Database</em></h1>
+            <p class="page-sub">Every scraped company, deduplicated and quality-scored before it enters outreach</p>
+          </div>
+          <div class="hero-side"><span class="hero-pill"><span class="hp-dot"></span><span class="hp-k">In database</span><span class="hp-v"><span id="leadTotalCount">0</span></span></span></div>
+        </div>
+      </header>
 
       <div class="input-group" style="flex-wrap:wrap;">
         <input class="input" type="text" placeholder="Search company, domain, contact..." id="leadSearch" oninput="filterLeads()" style="flex:1;min-width:200px;">
@@ -1272,8 +1491,17 @@
 
     <!-- ═══════ EMAIL ═══════ -->
     <div class="page" id="page-email">
-      <div class="page-title">Email Outreach</div>
-      <div class="page-sub">Cold email campaigns — sending from <span id="emailSenderDisplay" style="color:var(--green);font-family:'JetBrains Mono',monospace;">loading...</span></div>
+      <header class="hero hero-email">
+        <svg class="hero-waves" viewBox="0 0 1200 240" preserveAspectRatio="none"><path d="M0 150 C 200 90, 380 200, 600 140 S 1000 60, 1200 120"/><path d="M0 182 C 220 122, 400 232, 620 172 S 1010 92, 1200 152"/><path d="M0 214 C 240 154, 420 264, 640 204 S 1020 124, 1200 184"/></svg>
+        <div class="hero-inner">
+          <div>
+            <span class="hero-eyebrow">Outreach · Email</span>
+            <h1 class="page-title">Email <em>Outreach</em></h1>
+            <p class="page-sub">Capped at 10 sends a day — the rest of the queue carries over to tomorrow</p>
+          </div>
+          <div class="hero-side"><span class="hero-pill"><span class="hp-dot"></span><span class="hp-k">Sending as</span><span class="hp-v"><span id="emailSenderDisplay">loading…</span></span></span></div>
+        </div>
+      </header>
 
       <div class="stats-row">
         <div class="stat-card blue"><div class="stat-label">Total Sent</div><div class="stat-value" id="emailTodaySent">0</div></div>
@@ -1359,8 +1587,17 @@
 
     <!-- ═══════ FORMS ═══════ -->
     <div class="page" id="page-forms">
-      <div class="page-title">Contact Form Filling</div>
-      <div class="page-sub">Automated website form submissions via Playwright</div>
+      <header class="hero hero-forms">
+        <svg class="hero-waves" viewBox="0 0 1200 240" preserveAspectRatio="none"><path d="M0 150 C 200 90, 380 200, 600 140 S 1000 60, 1200 120"/><path d="M0 182 C 220 122, 400 232, 620 172 S 1010 92, 1200 152"/><path d="M0 214 C 240 154, 420 264, 640 204 S 1020 124, 1200 184"/></svg>
+        <div class="hero-inner">
+          <div>
+            <span class="hero-eyebrow">Outreach · Forms</span>
+            <h1 class="page-title">Contact <em>Forms</em></h1>
+            <p class="page-sub">A headless browser finds each company's contact form and submits your enquiry — max 100 a day</p>
+          </div>
+          <div class="hero-side"></div>
+        </div>
+      </header>
 
       <!-- Batch Controls -->
       <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;padding:16px 20px;">
@@ -1438,8 +1675,17 @@
 
     <!-- ═══════ INTELLIGENCE ═══════ -->
     <div class="page" id="page-intelligence">
-      <div class="page-title">Reports</div>
-      <div class="page-sub">Live outreach summary — emails sent, forms filled, lead activity</div>
+      <header class="hero hero-reports">
+        <svg class="hero-waves" viewBox="0 0 1200 240" preserveAspectRatio="none"><path d="M0 150 C 200 90, 380 200, 600 140 S 1000 60, 1200 120"/><path d="M0 182 C 220 122, 400 232, 620 172 S 1010 92, 1200 152"/><path d="M0 214 C 240 154, 420 264, 640 204 S 1020 124, 1200 184"/></svg>
+        <div class="hero-inner">
+          <div>
+            <span class="hero-eyebrow">Intelligence · Reports</span>
+            <h1 class="page-title">Outreach <em>Reports</em></h1>
+            <p class="page-sub">Live summary of everything sent, opened and answered</p>
+          </div>
+          <div class="hero-side"></div>
+        </div>
+      </header>
 
       <!-- Metrics cards removed -->
 
@@ -1543,8 +1789,17 @@
 
     <!-- ═══════ SOURCES ═══════ -->
     <div class="page" id="page-sources">
-      <div class="page-title">Source Tracker</div>
-      <div class="page-sub">Track which keywords and areas have been fully scraped</div>
+      <header class="hero hero-sources">
+        <svg class="hero-waves" viewBox="0 0 1200 240" preserveAspectRatio="none"><path d="M0 150 C 200 90, 380 200, 600 140 S 1000 60, 1200 120"/><path d="M0 182 C 220 122, 400 232, 620 172 S 1010 92, 1200 152"/><path d="M0 214 C 240 154, 420 264, 640 204 S 1020 124, 1200 184"/></svg>
+        <div class="hero-inner">
+          <div>
+            <span class="hero-eyebrow">Intelligence · Sources</span>
+            <h1 class="page-title">Source <em>Tracker</em></h1>
+            <p class="page-sub">Which keywords and regions are still producing leads, and which are exhausted</p>
+          </div>
+          <div class="hero-side"></div>
+        </div>
+      </header>
 
       <div class="stats-row">
         <div class="stat-card green"><div class="stat-label">Active Sources</div><div class="stat-value" id="srcActive">0</div></div>
@@ -1565,8 +1820,17 @@
 
     <!-- ═══════ FUNNEL ═══════ -->
     <div class="page" id="page-funnel">
-      <div class="page-title">Sales Funnel</div>
-      <div class="page-sub">Conversion pipeline analytics — track leads from discovery to results</div>
+      <header class="hero hero-funnel">
+        <svg class="hero-waves" viewBox="0 0 1200 240" preserveAspectRatio="none"><path d="M0 150 C 200 90, 380 200, 600 140 S 1000 60, 1200 120"/><path d="M0 182 C 220 122, 400 232, 620 172 S 1010 92, 1200 152"/><path d="M0 214 C 240 154, 420 264, 640 204 S 1020 124, 1200 184"/></svg>
+        <div class="hero-inner">
+          <div>
+            <span class="hero-eyebrow">Intelligence · Funnel</span>
+            <h1 class="page-title">Sales <em>Funnel</em></h1>
+            <p class="page-sub">From first discovery through to a reply — where leads advance and where they stall</p>
+          </div>
+          <div class="hero-side"></div>
+        </div>
+      </header>
       <div class="input-group" style="margin-bottom:12px;gap:8px;align-items:center;justify-content:flex-end;">
         <span style="font-size:11px;color:var(--text-dim);">Date Range:</span>
         <input type="date" id="funnelDateFrom" onchange="renderFunnel()" onclick="this.showPicker()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;color-scheme:dark;">
@@ -1613,8 +1877,17 @@
 
     <!-- ═══════ PIPELINE ═══════ -->
     <div class="page" id="page-pipeline">
-      <div class="page-title">Pipeline Flow</div>
-      <div class="page-sub">Active pipeline phases — use Start Agent on the dashboard to run</div>
+      <header class="hero hero-pipeline">
+        <svg class="hero-waves" viewBox="0 0 1200 240" preserveAspectRatio="none"><path d="M0 150 C 200 90, 380 200, 600 140 S 1000 60, 1200 120"/><path d="M0 182 C 220 122, 400 232, 620 172 S 1010 92, 1200 152"/><path d="M0 214 C 240 154, 420 264, 640 204 S 1020 124, 1200 184"/></svg>
+        <div class="hero-inner">
+          <div>
+            <span class="hero-eyebrow">System · Pipeline</span>
+            <h1 class="page-title">Pipeline <em>Flow</em></h1>
+            <p class="page-sub">The stages of a daily cycle — start a run from the dashboard console</p>
+          </div>
+          <div class="hero-side"></div>
+        </div>
+      </header>
 
       <div class="alert alert-green" id="serverStatus">Connected to agent server</div>
 
@@ -3105,17 +3378,21 @@ async function loadTrackingStats(){
         : '<span class="tag" style="background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);">Not Opened</span>';
       const openedAt = t.opened_at ? new Date(t.opened_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
       const openCount = t.open_count || 0;
-      // Parse user_agent for device
+      // Device details recorded by the email-open edge function
       const ua = t.user_agent || '';
-      let device = 'Unknown';
-      if(ua.includes('Mobile') || ua.includes('Android') || ua.includes('iPhone')) device = 'Mobile';
-      else if(ua.includes('Windows')) device = 'Windows';
-      else if(ua.includes('Mac')) device = 'Mac';
-      else if(ua.includes('Linux')) device = 'Linux';
-      else if(ua.includes('Gmail') || ua.includes('Google')) device = 'Gmail Proxy';
-      else if(ua) device = ua.substring(0,30)+'...';
+      let device = t.device_type || '';
+      if(t.os && t.os !== 'Unknown') device = device ? device + ' · ' + t.os : t.os;
+      if(t.email_client && t.email_client !== 'Unknown') device = device ? device + ' · ' + t.email_client : t.email_client;
+      if(!device){
+        if(ua.includes('GoogleImageProxy')) device = 'Gmail proxy';
+        else if(ua.includes('Mobile') || ua.includes('Android') || ua.includes('iPhone')) device = 'Mobile';
+        else if(ua.includes('Windows')) device = 'Windows';
+        else if(ua.includes('Mac')) device = 'Mac';
+        else if(ua.includes('Linux')) device = 'Linux';
+        else device = ua ? ua.substring(0,28)+'…' : 'Unknown';
+      }
       
-      const deviceBadge = opened ? '<span style="font-size:11px;color:var(--text-muted);">'+device+'</span>' : '<span style="color:var(--text-dim);">-</span>';
+      const deviceBadge = opened ? '<span style="font-size:11px;color:var(--text-muted);" title="'+ua.replace(/"/g,'&quot;')+'">'+device+'</span>' : '<span style="color:var(--text-dim);">-</span>';
       const websiteUrl = t.website_url ? `<a href="${t.website_url}" target="_blank" style="color:var(--cyan);text-decoration:none;font-size:11px;">${t.website_url.replace(/^https?:\/\//,'').split('/')[0]}</a>` : '-';
       const repliedAt = t.replied_at ? new Date(t.replied_at).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
       
@@ -4467,11 +4744,14 @@ async function pollStatus(){
   if(now - lastDataRefresh > DATA_REFRESH_INTERVAL){
     lastDataRefresh = now;
     await refreshDashboardData();
+    await refreshTrends();
   }
 }
 
 function renderQuota(q){
   if(!q || q.email_limit === undefined) return;
+  const hp = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+  hp('heroPillQueue', (q.pending_email || 0) + (q.pending_form || 0));
   const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
   const C = 2 * Math.PI * 44;
   const arc = (id, used, limit) => {
@@ -4651,6 +4931,68 @@ async function saveFormMessage(){
   } else {
     alert('Connect to server first');
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SPARKLINES — real 14-day history from /api/trends
+// ═══════════════════════════════════════════════════════════════
+function drawSpark(svgId, values, gradId){
+  const svg = document.getElementById(svgId);
+  if(!svg) return;
+  const W = 220, H = 46, pad = 5;
+  const pts = (values && values.length) ? values : [0];
+  const peak = Math.max(...pts);
+  const max = Math.max(1, peak);
+  const step = pts.length > 1 ? W / (pts.length - 1) : W;
+  // an all-zero series would hug the bottom edge and read as a border — float it instead
+  const xy = peak === 0
+    ? pts.map((v, i) => [i * step, H * 0.62])
+    : pts.map((v, i) => [i * step, H - pad - (v / max) * (H - pad * 2)]);
+  svg.style.opacity = peak === 0 ? '0.35' : '1';
+  // smooth the polyline with mid-point quadratics
+  let d = `M${xy[0][0].toFixed(1)} ${xy[0][1].toFixed(1)}`;
+  for(let i = 1; i < xy.length; i++){
+    const [px, py] = xy[i-1], [x, y] = xy[i];
+    d += ` Q${px.toFixed(1)} ${py.toFixed(1)} ${((px+x)/2).toFixed(1)} ${((py+y)/2).toFixed(1)}`;
+  }
+  d += ` T${xy[xy.length-1][0].toFixed(1)} ${xy[xy.length-1][1].toFixed(1)}`;
+  const area = `${d} L${W} ${H} L0 ${H} Z`;
+  const last = xy[xy.length-1];
+  svg.innerHTML = `
+    <defs><linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="currentColor" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="currentColor" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path class="area" d="${area}" fill="url(#${gradId})"/>
+    <path class="line" d="${d}"/>
+    <circle class="dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2.6"/>`;
+  const line = svg.querySelector('path.line');
+  const len = line.getTotalLength ? line.getTotalLength() : 300;
+  svg.style.setProperty('--len', len.toFixed(0));
+  svg.classList.remove('draw'); void svg.offsetWidth; svg.classList.add('draw');
+}
+
+function setTrend(id, values){
+  const el = document.getElementById(id);
+  if(!el || !values || values.length < 4) return;
+  const half = Math.floor(values.length / 2);
+  const prev = values.slice(0, half).reduce((a,b)=>a+b, 0);
+  const curr = values.slice(half).reduce((a,b)=>a+b, 0);
+  if(prev === 0 && curr === 0){ el.textContent = 'no activity'; el.className = 'stat-trend'; return; }
+  if(prev === 0){ el.textContent = 'new'; el.className = 'stat-trend up'; return; }
+  const pct = Math.round((curr - prev) / prev * 100);
+  el.textContent = (pct >= 0 ? '+' : '') + pct + '% vs prev';
+  el.className = 'stat-trend ' + (pct >= 0 ? 'up' : 'down');
+}
+
+async function refreshTrends(){
+  const data = await api('/api/trends?days=14');
+  if(!data || !data.series) return;
+  const s = data.series;
+  drawSpark('sparkLeads', s.leads, 'gLeads');   setTrend('trendLeads', s.leads);
+  drawSpark('sparkEmails', s.emails, 'gEmails'); setTrend('trendEmails', s.emails);
+  drawSpark('sparkForms', s.forms, 'gForms');   setTrend('trendForms', s.forms);
+  drawSpark('sparkReplies', s.replies, 'gReplies'); setTrend('trendReplies', s.replies);
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -503,6 +503,7 @@ def _create_tracking_pixel(lead: dict, to_email: str, subject: str, sequence_sta
     if not db:
         return "", None
 
+    import config
     tracking_id = str(uuid.uuid4())
     try:
         db.insert("email_tracking", {
@@ -512,9 +513,18 @@ def _create_tracking_pixel(lead: dict, to_email: str, subject: str, sequence_sta
             "recipient_email": to_email,
             "subject": subject,
         })
-        # Supabase Edge Function handles open tracking
-        pixel_url = f"{SUPABASE_URL}/functions/v1/clever-function?id={tracking_id}"
-        pixel_html = f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="">'
+        # Served by the "email-open" Supabase Edge Function (supabase/functions/email-open)
+        base = (getattr(config, "TRACKING_PIXEL_BASE", "") or "").strip()
+        if not base:
+            supabase_url = (getattr(config, "SUPABASE_URL", SUPABASE_URL) or "").rstrip("/")
+            fn = getattr(config, "TRACKING_FUNCTION", "email-open")
+            base = f"{supabase_url}/functions/v1/{fn}"
+        pixel_url = f"{base}?id={tracking_id}"
+        # display:none stops some clients loading the image — keep it rendered but invisible
+        pixel_html = (
+            f'<img src="{pixel_url}" width="1" height="1" alt="" '
+            f'style="width:1px;height:1px;border:0;opacity:0.01;">'
+        )
         return pixel_html, tracking_id
     except Exception as e:
         logger.error(f"[Tracking] Failed to create pixel: {e}")

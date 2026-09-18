@@ -234,6 +234,12 @@ FOLLOWUP_SCHEDULE = {
     14: "breakup",      # Day 14: Breakup — "No pressure, offer open"
 }
 
+# Email open tracking — pixel served by the "email-open" Supabase Edge Function
+# (source in supabase/functions/email-open). TRACKING_PIXEL_BASE overrides the
+# whole URL if the pixel is ever hosted somewhere else.
+TRACKING_FUNCTION = os.getenv("TRACKING_FUNCTION", "email-open")
+TRACKING_PIXEL_BASE = os.getenv("TRACKING_PIXEL_BASE", "")
+
 # ═══════════════════════════════════════════════════════════════
 # FORM FILLING SETTINGS
 # ═══════════════════════════════════════════════════════════════
