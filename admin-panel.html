@@ -114,6 +114,89 @@
   .hint{font-size:11px;color:var(--text-hint);margin-top:5px;line-height:1.5;}
   .divider{border:none;border-top:1px solid var(--border-soft);margin:20px 0;}
 
+
+  /* ── AI generator panels ── */
+  .ai-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;}
+  .btn-ai{
+    display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:9px;
+    border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);
+    font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;transition:all 0.15s;
+  }
+  .btn-ai:hover:not(:disabled){background:var(--accent);color:#1a1204;transform:translateY(-1px);}
+  .btn-ai:disabled{opacity:0.55;cursor:default;}
+  .btn-ai .spin{
+    width:13px;height:13px;border-radius:50%;border:2px solid currentColor;
+    border-top-color:transparent;animation:aispin 0.7s linear infinite;display:none;
+  }
+  .btn-ai.busy .spin{display:inline-block;}
+  @keyframes aispin{to{transform:rotate(360deg);}}
+  .ai-elapsed{font-size:11.5px;color:var(--text-dim);font-variant-numeric:tabular-nums;}
+
+  .ai-panel{
+    display:none;margin-top:14px;padding:16px;border-radius:12px;
+    background:var(--surface-2);border:1px solid var(--border);
+  }
+  .ai-panel.show{display:block;animation:pop 0.18s ease;}
+  .ai-panel h4{
+    font-size:12px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;
+    color:var(--text-muted);margin-bottom:4px;
+  }
+  .ai-panel .ai-sub{font-size:11.5px;color:var(--text-dim);margin-bottom:12px;line-height:1.5;}
+  .ai-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;}
+  .btn-mini{
+    padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;
+    font-family:inherit;border:1px solid var(--border);background:var(--surface);color:var(--text);
+    transition:all 0.15s;
+  }
+  .btn-mini:hover{border-color:var(--text-hint);}
+  .btn-mini.primary{background:var(--success);border-color:var(--success);color:#06251e;}
+  .btn-mini.primary:hover{filter:brightness(1.08);}
+  .btn-mini:disabled{opacity:0.5;cursor:default;}
+
+  /* editable suggestion rows */
+  .ai-kw{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;
+    background:var(--surface);border:1px solid var(--border-soft);margin-bottom:7px;
+  }
+  .ai-kw input{
+    flex:1;min-width:120px;border:1px solid transparent;background:transparent;color:var(--text);
+    font-size:13px;font-family:inherit;padding:5px 7px;border-radius:6px;outline:none;
+  }
+  .ai-kw input:hover{border-color:var(--border);}
+  .ai-kw input:focus{border-color:var(--accent);background:var(--input-bg);}
+  .ai-kw .why{font-size:11px;color:var(--text-dim);max-width:44%;line-height:1.4;}
+  .ai-kw .drop{
+    width:22px;height:22px;flex-shrink:0;border-radius:6px;border:none;cursor:pointer;
+    background:var(--surface-2);color:var(--text-dim);font-size:13px;line-height:1;
+  }
+  .ai-kw .drop:hover{background:var(--danger);color:#fff;}
+  .ai-kw.removed{opacity:0.4;}
+  .ai-kw.removed input{text-decoration:line-through;}
+
+  /* country pick + rotation table */
+  .ai-pick{
+    display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:10px;
+    background:var(--surface);border:1px solid var(--accent);margin-bottom:12px;
+  }
+  .ai-pick .flagname{font-size:19px;font-weight:800;color:var(--text);letter-spacing:-0.2px;}
+  .ai-pick .why{font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:3px;}
+  .ai-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;}
+  .ai-table th{
+    text-align:left;padding:7px 9px;font-size:10px;letter-spacing:0.4px;text-transform:uppercase;
+    color:var(--text-hint);font-weight:700;border-bottom:1px solid var(--border);
+  }
+  .ai-table td{padding:7px 9px;border-bottom:1px solid var(--border-soft);color:var(--text-muted);}
+  .ai-table td:first-child{color:var(--text);font-weight:600;}
+  .ai-table .ok{color:var(--success);font-weight:600;}
+  .ai-table .wait{color:var(--warn);font-weight:600;}
+  .ai-scroll{max-height:260px;overflow:auto;border-radius:9px;border:1px solid var(--border-soft);}
+  .ai-note{
+    font-size:11.5px;line-height:1.55;padding:9px 12px;border-radius:8px;margin-top:10px;
+    background:rgba(245,185,66,0.1);border:1px solid rgba(245,185,66,0.28);color:var(--warn);
+  }
+  .ai-excluded{font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.6;}
+  .ai-excluded strong{color:var(--text-muted);}
+
   /* ── Keyword tag manager ── */
   .kw-box{
     display:flex;flex-wrap:wrap;gap:7px;padding:12px;background:var(--input-bg);
@@ -437,11 +520,72 @@
         <div class="hint">The target country is added automatically, e.g. "ball valve manufacturer India".</div>
         <span class="kw-suggest-label">Suggested additions</span>
         <div class="kw-suggest" id="kwSuggest"></div>
+
+        <div class="ai-row">
+          <button class="btn-ai" id="btnGenKw" onclick="generateKeywords()">
+            <span class="spin"></span><span class="lbl">✨ Auto Generate Keywords</span>
+          </button>
+          <span class="ai-elapsed" id="kwElapsed"></span>
+        </div>
+        <div class="hint">Reads the company profile and every keyword already searched, then
+          suggests new ones. Near-duplicates of existing keywords are dropped before you see them.
+          Usually takes 20–30 seconds.</div>
+
+        <div class="ai-panel" id="kwPanel">
+          <h4>Suggested keywords</h4>
+          <div class="ai-sub" id="kwPanelSub"></div>
+          <div id="kwPanelList"></div>
+          <div class="ai-excluded" id="kwPanelRejected"></div>
+          <div class="ai-actions">
+            <button class="btn-mini primary" id="kwApprove" onclick="approveKeywords()">Approve &amp; add</button>
+            <button class="btn-mini" onclick="closeAiPanel('kwPanel')">Discard</button>
+            <button class="btn-mini" onclick="generateKeywords()">Regenerate</button>
+          </div>
+          <div class="hint">Approving adds them to Additional Keywords above — click
+            <strong>Save Scraping Config</strong> to make them live.</div>
+        </div>
       </div>
 
       <div class="setting-group">
         <div class="setting-label">Target Countries (comma-separated)</div>
         <input class="input" id="countries" value="India, UAE, Saudi Arabia, US, UK, Germany, Netherlands, South Africa, Nigeria, Kenya, Singapore, Malaysia, Turkey, Egypt">
+        <div class="hint">The scraper works down this list in order until the lead target is met.</div>
+
+        <div class="ai-row">
+          <button class="btn-ai" id="btnGenCountry" onclick="generateCountry()">
+            <span class="spin"></span><span class="lbl">🌍 Auto Generate Country</span>
+          </button>
+          <button class="btn-mini" onclick="showCountryHistory()">View rotation history</button>
+          <span class="ai-elapsed" id="countryElapsed"></span>
+        </div>
+        <div class="hint">Picks the market for the next campaign from the rotation history:
+          Gulf countries are excluded outright, anything used in the last
+          <span id="cooldownDays">14</span> days is skipped, and the rest are ranked by how long
+          it has been since they were last worked.</div>
+
+        <div class="ai-panel" id="countryPanel">
+          <h4>Next campaign country</h4>
+          <div class="ai-sub" id="countryPanelSub"></div>
+          <div id="countryPick"></div>
+          <div id="countryWarn"></div>
+          <div class="ai-actions">
+            <button class="btn-mini primary" id="countryApply" onclick="applyCountry()">Use for next campaign</button>
+            <button class="btn-mini" onclick="closeAiPanel('countryPanel')">Discard</button>
+            <button class="btn-mini" onclick="generateCountry()">Pick another</button>
+          </div>
+          <div class="hint">Applying moves it to the front of Target Countries, saves it, and
+            stamps it as used today so it goes on cooldown.</div>
+        </div>
+
+        <div class="ai-panel" id="historyPanel">
+          <h4>Country rotation</h4>
+          <div class="ai-sub" id="historySub"></div>
+          <div class="ai-scroll"><table class="ai-table" id="historyTable"></table></div>
+          <div class="ai-excluded" id="historyExcluded"></div>
+          <div class="ai-actions">
+            <button class="btn-mini" onclick="closeAiPanel('historyPanel')">Close</button>
+          </div>
+        </div>
       </div>
       <button class="btn-save" onclick="saveSection('scraping')">Save Scraping Config</button>
       <span class="save-status" id="status-scraping">✓ Saved</span>
@@ -649,6 +793,194 @@ function toast(msg){
   document.getElementById('toastMsg').textContent = msg;
   t.classList.add('show');
   setTimeout(()=> t.classList.remove('show'), 3000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AI GENERATORS — keywords and the next campaign country.
+// Both propose; nothing is applied until the admin approves.
+// ═══════════════════════════════════════════════════════════════
+let aiKeywords = [];      // [{keyword, why, removed}]
+let aiCountry = null;     // {selected, reason, source, ...}
+
+function setBusy(id, busy, busyLabel, idleLabel){
+  const btn = document.getElementById(id);
+  if(!btn) return;
+  btn.disabled = busy;
+  btn.classList.toggle('busy', busy);
+  btn.querySelector('.lbl').textContent = busy ? busyLabel : idleLabel;
+}
+
+function closeAiPanel(id){
+  const el = document.getElementById(id);
+  if(el) el.classList.remove('show');
+}
+
+function tickElapsed(id){
+  const el = document.getElementById(id);
+  if(!el) return () => {};
+  const t0 = Date.now();
+  el.textContent = '0s';
+  const timer = setInterval(() => { el.textContent = Math.round((Date.now()-t0)/1000) + 's'; }, 1000);
+  return (finalSeconds) => {
+    clearInterval(timer);
+    el.textContent = (finalSeconds != null ? finalSeconds : Math.round((Date.now()-t0)/1000)) + 's';
+  };
+}
+
+// ── keywords ──────────────────────────────────────────────────
+async function generateKeywords(){
+  setBusy('btnGenKw', true, 'Generating…', '✨ Auto Generate Keywords');
+  const stop = tickElapsed('kwElapsed');
+  try {
+    const r = await api('/api/admin/ai/keywords', {count: 12});
+    stop(r && r.elapsed_seconds);
+    if(!r || r.error){
+      toast(r && r.error ? r.error : 'Keyword generation failed');
+      if(!r || !(r.keywords || []).length) return;
+    }
+    aiKeywords = (r.keywords || []).map(k => ({...k, removed: false}));
+    renderAiKeywords(r);
+    document.getElementById('kwPanel').classList.add('show');
+  } catch(e){
+    stop();
+    toast('Keyword generation failed: ' + e.message);
+  } finally {
+    setBusy('btnGenKw', false, 'Generating…', '✨ Auto Generate Keywords');
+  }
+}
+
+function renderAiKeywords(meta){
+  const sub = document.getElementById('kwPanelSub');
+  sub.textContent = `${aiKeywords.length} suggestion${aiKeywords.length===1?'':'s'}, checked against `
+    + `${meta.used_count} keyword${meta.used_count===1?'':'s'} already in use. `
+    + 'Edit any of them, drop the ones you do not want, then approve.';
+
+  const list = document.getElementById('kwPanelList');
+  list.innerHTML = '';
+  aiKeywords.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'ai-kw' + (item.removed ? ' removed' : '');
+    const input = document.createElement('input');
+    input.value = item.keyword;
+    input.oninput = () => { aiKeywords[i].keyword = input.value; };
+    const why = document.createElement('span');
+    why.className = 'why';
+    why.textContent = item.why || '';
+    const drop = document.createElement('button');
+    drop.className = 'drop';
+    drop.textContent = item.removed ? '↺' : '×';
+    drop.title = item.removed ? 'Put it back' : 'Remove';
+    drop.onclick = () => { aiKeywords[i].removed = !aiKeywords[i].removed; renderAiKeywords(meta); };
+    row.append(input, why, drop);
+    list.appendChild(row);
+  });
+
+  const rejected = meta.rejected || [];
+  document.getElementById('kwPanelRejected').innerHTML = rejected.length
+    ? `<strong>${rejected.length} dropped as duplicates:</strong> ` +
+      rejected.map(x => `${x.keyword} <span style="opacity:.7">(≈ ${x.closest})</span>`).join(' · ')
+    : '';
+}
+
+function approveKeywords(){
+  const kept = aiKeywords.filter(k => !k.removed).map(k => k.keyword.trim()).filter(Boolean);
+  if(!kept.length){ toast('Nothing to add — every suggestion was removed'); return; }
+  let added = 0, skipped = 0;
+  kept.forEach(k => {
+    const before = keywords.length;
+    addKeyword(k);
+    if(keywords.length > before) added++; else skipped++;
+  });
+  closeAiPanel('kwPanel');
+  toast(added + ' keyword' + (added===1?'':'s') + ' added'
+        + (skipped ? ` · ${skipped} already present` : '') + ' — remember to save');
+}
+
+// ── country ───────────────────────────────────────────────────
+async function generateCountry(){
+  setBusy('btnGenCountry', true, 'Selecting…', '🌍 Auto Generate Country');
+  const stop = tickElapsed('countryElapsed');
+  try {
+    const r = await api('/api/admin/ai/country', {});
+    stop(r && r.elapsed_seconds);
+    if(!r || r.error){ toast(r && r.error ? r.error : 'Country selection failed'); return; }
+    aiCountry = r;
+    renderCountryPick(r);
+    document.getElementById('countryPanel').classList.add('show');
+    if(r.cooldown_days) document.getElementById('cooldownDays').textContent = r.cooldown_days;
+  } catch(e){
+    stop();
+    toast('Country selection failed: ' + e.message);
+  } finally {
+    setBusy('btnGenCountry', false, 'Selecting…', '🌍 Auto Generate Country');
+  }
+}
+
+function renderCountryPick(r){
+  const origin = r.source === 'ai' ? 'chosen by AI from the eligible list'
+               : r.source === 'history' ? 'chosen from the rotation history'
+               : 'no selection';
+  document.getElementById('countryPanelSub').textContent =
+    `${(r.eligible||[]).length} eligible · ${(r.cooling_down||[]).length} on cooldown · `
+    + `${(r.gulf_excluded||[]).length} Gulf markets excluded`;
+
+  const pick = document.getElementById('countryPick');
+  if(!r.selected){
+    pick.innerHTML = '';
+  } else {
+    pick.innerHTML = `
+      <div class="ai-pick">
+        <div style="flex:1;">
+          <div class="flagname">${r.selected}</div>
+          <div class="why">${r.reason || ''}</div>
+          <div class="why" style="opacity:.75;margin-top:5px;">${origin}${r.runner_up ? ' · runner-up: ' + r.runner_up : ''}</div>
+        </div>
+      </div>`;
+  }
+  document.getElementById('countryWarn').innerHTML =
+    r.warning ? `<div class="ai-note">${r.warning}</div>` : '';
+  document.getElementById('countryApply').disabled = !r.selected;
+}
+
+async function applyCountry(){
+  if(!aiCountry || !aiCountry.selected) return;
+  const r = await api('/api/admin/ai/apply-country', {
+    country: aiCountry.selected, reason: aiCountry.reason, source: aiCountry.source,
+  });
+  if(!r || r.error){ toast(r && r.error ? r.error : 'Could not apply the country'); return; }
+  document.getElementById('countries').value = (r.countries || []).join(', ');
+  closeAiPanel('countryPanel');
+  toast(r.country + ' set as the next campaign country'
+        + (r.recorded ? '' : ' (history not recorded — run sql/008_country_rotation.sql)'));
+}
+
+async function showCountryHistory(){
+  let d;
+  try {
+    const resp = await fetch('/api/admin/country-history', {headers:{'X-Admin-Token':TOKEN}});
+    d = await resp.json();
+  } catch(e){ toast('Could not load the rotation history'); return; }
+  if(d.error){ toast(d.error); return; }
+
+  document.getElementById('historySub').textContent =
+    `${d.pool_size} countries in the pool · ${d.cooldown_days}-day cooldown · `
+    + `${(d.eligible||[]).length} eligible right now`;
+
+  const rows = (d.history || []).map(h => `
+    <tr>
+      <td>${h.country}</td>
+      <td>${h.last_used_at ? String(h.last_used_at).slice(0,10) : '—'}</td>
+      <td>${h.usage_count}</td>
+      <td>${h.next_eligible_at ? String(h.next_eligible_at).slice(0,10) : '—'}</td>
+      <td class="${h.eligible_now ? 'ok' : 'wait'}">${h.eligible_now ? 'Eligible' : h.days_until_eligible + 'd left'}</td>
+    </tr>`).join('');
+  document.getElementById('historyTable').innerHTML =
+    '<thead><tr><th>Country</th><th>Last used</th><th>Uses</th><th>Next eligible</th><th>Status</th></tr></thead>'
+    + '<tbody>' + (rows || '<tr><td colspan="5" style="padding:16px;text-align:center;">No campaigns recorded yet</td></tr>') + '</tbody>';
+
+  document.getElementById('historyExcluded').innerHTML =
+    `<strong>Never selected:</strong> ${(d.gulf_excluded||[]).join(', ') || '—'} (Gulf markets, excluded regardless of history)`;
+  document.getElementById('historyPanel').classList.add('show');
 }
 
 async function api(path, data){

@@ -145,6 +145,24 @@ def add_log(msg, level="info", category="system", data=None):
     logger.info(msg)
 
 
+def _persist_env(var: str, value) -> None:
+    """Set an env var for this process and write it back to .env."""
+    import re
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    content = ""
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    safe = str(value).replace("\r", "").replace("\n", "\\n")
+    os.environ[var] = safe
+    if f"{var}=" in content:
+        content = re.sub(f"{var}=.*", f"{var}={safe}", content)
+    else:
+        content += f"\n{var}={safe}"
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.write(content.strip() + "\n")
+
+
 def _current_business_date_str(reset_hour_local: int = 11) -> str:
     """Return business-date key in local timezone (resets at 11:00 local)."""
     now_local = datetime.now(timezone.utc).astimezone()
@@ -1778,6 +1796,22 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "countries": config.TARGET_COUNTRIES,
             })
 
+        elif path == "/api/admin/country-history":
+            if not _check_admin_token(self):
+                self._json_response({"error": "Unauthorized"}, 401)
+                return
+            import config
+            from modules.country_rotation import get_country_history, get_eligible_countries
+            buckets = get_eligible_countries()
+            self._json_response({
+                "history": get_country_history(),
+                "eligible": buckets["eligible"],
+                "cooling_down": buckets["cooling_down"],
+                "gulf_excluded": buckets["gulf_excluded"],
+                "cooldown_days": buckets["cooldown_days"],
+                "pool_size": len(getattr(config, "COUNTRY_POOL", []) or []),
+            })
+
         elif path == "/api/sources":
             from modules.database import db
             sources = db.select("source_tracker", order="last_scraped.desc", limit=200) if db else []
@@ -2797,6 +2831,85 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 self._json_response({"status": "saved"})
             except Exception as e:
                 self._json_response({"error": str(e)}, 500)
+
+        elif path == "/api/admin/ai/keywords":
+            if not _check_admin_token(self):
+                self._json_response({"error": "Unauthorized"}, 401)
+                return
+            try:
+                count = max(3, min(25, int(body.get("count") or 12)))
+            except (TypeError, ValueError):
+                count = 12
+            started = time.time()
+            try:
+                from modules.keyword_ai import generate_keywords
+                result = generate_keywords(count=count)
+            except Exception as e:
+                logger.error(f"[Keywords] {e}")
+                self._json_response({"error": str(e)}, 500)
+                return
+            result["elapsed_seconds"] = round(time.time() - started, 1)
+            if result.get("keywords"):
+                add_log(f"AI suggested {len(result['keywords'])} new keywords "
+                        f"({len(result.get('rejected', []))} dropped as duplicates) "
+                        f"in {result['elapsed_seconds']}s", category="system")
+            self._json_response(result)
+
+        elif path == "/api/admin/ai/country":
+            if not _check_admin_token(self):
+                self._json_response({"error": "Unauthorized"}, 401)
+                return
+            started = time.time()
+            try:
+                from modules.country_rotation import select_next_country
+                result = select_next_country()
+            except Exception as e:
+                logger.error(f"[Country] {e}")
+                self._json_response({"error": str(e)}, 500)
+                return
+            result["elapsed_seconds"] = round(time.time() - started, 1)
+            if result.get("selected"):
+                add_log(f"AI proposed {result['selected']} for the next campaign "
+                        f"({result['source']}) — awaiting approval", category="system")
+            self._json_response(result)
+
+        elif path == "/api/admin/ai/apply-country":
+            if not _check_admin_token(self):
+                self._json_response({"error": "Unauthorized"}, 401)
+                return
+            import config
+            from modules.country_rotation import record_country_use
+            country = " ".join(str(body.get("country") or "").split())
+            if not country:
+                self._json_response({"error": "No country given"}, 400)
+                return
+            if config.is_gulf_country(country):
+                # Belt and braces: the picker never offers one, and the panel can't
+                # talk us into recording one either.
+                self._json_response({"error": f"{country} is a Gulf market and is excluded."}, 400)
+                return
+
+            # Front of the queue for the next campaign; the rest stay as fallback
+            # so an approval never throws away the configured list.
+            rest = [c for c in (getattr(config, "TARGET_COUNTRIES", []) or [])
+                    if c.strip().lower() != country.lower()]
+            config.TARGET_COUNTRIES = [country] + rest
+            try:
+                _persist_env("TARGET_COUNTRIES", json.dumps(config.TARGET_COUNTRIES))
+            except Exception as e:
+                self._json_response({"error": f"Couldn't save the country list: {e}"}, 500)
+                return
+
+            record = record_country_use(country, selected_by=body.get("source") or "ai",
+                                        reason=body.get("reason") or "")
+            add_log(f"Next campaign country set to {country}", category="system")
+            self._json_response({
+                "status": "applied",
+                "country": country,
+                "countries": config.TARGET_COUNTRIES,
+                "record": record,
+                "recorded": bool(record),
+            })
 
         elif path == "/api/mark-replied":
             # Manually mark a lead as replied

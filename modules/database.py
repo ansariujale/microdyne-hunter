@@ -143,16 +143,23 @@ class SupabaseREST:
 class InMemoryDB:
     """In-memory database with PostgREST-compatible filter syntax."""
 
+    # Every table in sql/FULL_SETUP.sql. A table missing from here silently
+    # swallows its writes, so new migrations belong in this list too.
+    TABLES = (
+        "leads",
+        "source_tracker",
+        "segment_performance",
+        "outreach_log",
+        "intelligence_reports",
+        "email_variants",
+        "email_warmup",
+        "email_tracking",
+        "email_open_events",
+        "country_usage",
+    )
+
     def __init__(self):
-        self.tables = {
-            "leads": [],
-            "source_tracker": [],
-            "segment_performance": [],
-            "outreach_log": [],
-            "intelligence_reports": [],
-            "email_variants": [],
-            "email_warmup": [],
-        }
+        self.tables = {name: [] for name in self.TABLES}
 
     def _apply_filters(self, rows: list[dict], filters: dict) -> list[dict]:
         """Apply PostgREST-style filters to rows."""

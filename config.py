@@ -100,6 +100,66 @@ else:
         "Australia", "Indonesia", "Thailand", "Vietnam", "Qatar", "Oman",
     ]
 
+# ═══════════════════════════════════════════════════════════════
+# COUNTRY ROTATION (auto-selection for the next campaign)
+# ═══════════════════════════════════════════════════════════════
+
+# Gulf markets are never picked automatically, whatever the history says.
+# Listed by every spelling the AI or an admin might type.
+GULF_COUNTRY_ALIASES = {
+    "uae": "United Arab Emirates",
+    "u.a.e.": "United Arab Emirates",
+    "u.a.e": "United Arab Emirates",
+    "united arab emirates": "United Arab Emirates",
+    "dubai": "United Arab Emirates",
+    "abu dhabi": "United Arab Emirates",
+    "sharjah": "United Arab Emirates",
+    "ksa": "Saudi Arabia",
+    "saudi": "Saudi Arabia",
+    "saudi arabia": "Saudi Arabia",
+    "kingdom of saudi arabia": "Saudi Arabia",
+    "qatar": "Qatar",
+    "state of qatar": "Qatar",
+    "doha": "Qatar",
+    "kuwait": "Kuwait",
+    "state of kuwait": "Kuwait",
+    "bahrain": "Bahrain",
+    "kingdom of bahrain": "Bahrain",
+    "oman": "Oman",
+    "sultanate of oman": "Oman",
+    "muscat": "Oman",
+}
+
+GULF_COUNTRIES = [
+    "United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Bahrain", "Oman",
+]
+
+
+def is_gulf_country(name: str) -> bool:
+    """True for any spelling of a Gulf market, so it can be filtered out."""
+    key = " ".join(str(name or "").strip().lower().replace(".", ". ").split())
+    if key in GULF_COUNTRY_ALIASES:
+        return True
+    return " ".join(str(name or "").strip().lower().split()) in GULF_COUNTRY_ALIASES
+
+
+# How long a country sits out before it can be picked again.
+COUNTRY_COOLDOWN_DAYS = int(os.getenv("COUNTRY_COOLDOWN_DAYS", "14"))
+
+# Markets the auto-selector may choose from. Industrial economies that buy
+# turned components and mechanical seals; no Gulf entries by construction.
+COUNTRY_POOL = [
+    "India", "United States", "United Kingdom", "Germany", "Netherlands",
+    "Italy", "France", "Spain", "Poland", "Czech Republic", "Sweden",
+    "Turkey", "Egypt", "South Africa", "Nigeria", "Kenya", "Morocco",
+    "Singapore", "Malaysia", "Indonesia", "Thailand", "Vietnam",
+    "Philippines", "South Korea", "Japan", "Taiwan", "Australia",
+    "New Zealand", "Canada", "Mexico", "Brazil", "Chile", "Colombia",
+    "Argentina", "Bangladesh", "Sri Lanka", "Israel", "Portugal", "Romania",
+]
+COUNTRY_POOL = [c for c in COUNTRY_POOL if not is_gulf_country(c)]
+
+
 # Preserved best keyword set — always searched, cannot be removed from the admin
 # panel. These target BUYERS of turned parts / mechanical seals (OEMs), not other
 # CNC job shops: searching "CNC turning job work" would return competitors.
