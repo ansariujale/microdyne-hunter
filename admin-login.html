@@ -57,7 +57,7 @@
   }
   .side-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 0 3px rgba(46,204,154,0.2);}
   .side-panel h2{font-size:26px;font-weight:800;line-height:1.3;margin-top:22px;letter-spacing:-0.3px;}
-  .side-panel h2 span{background:linear-gradient(90deg,#8fb8ff,#c9b8ff);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .side-panel h2 span{background:linear-gradient(90deg,#f3b45c,#e8a33d 55%,#37bfa6);-webkit-background-clip:text;background-clip:text;color:transparent;}
   .side-panel p{font-size:13.5px;color:var(--text-muted);margin-top:14px;line-height:1.7;max-width:34ch;}
   .capability-list{margin-top:28px;display:flex;flex-direction:column;gap:12px;}
   .capability{display:flex;align-items:center;gap:10px;font-size:12.5px;color:#c3cee2;}
@@ -116,9 +116,78 @@
   .back-link{text-align:center;margin-top:22px;}
   .back-link a{color:var(--text-dim);font-size:12.5px;text-decoration:none;transition:color 0.15s;}
   .back-link a:hover{color:var(--accent);}
+
+  /* ═══ LIQUID GLASS LAYER ═══ */
+  :root,[data-theme="dark"]{
+    --glass:rgba(17,19,25,0.58);--glass-strong:rgba(15,17,22,0.8);--glass-soft:rgba(255,255,255,0.045);
+    --glass-brd:rgba(255,255,255,0.10);--glass-brd-strong:rgba(255,255,255,0.18);
+    --sheen:linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.02) 38%,rgba(255,255,255,0) 60%);
+    --glass-shadow:0 1px 0 rgba(255,255,255,0.09) inset,0 26px 56px -28px rgba(0,0,0,0.9);
+    --blob-1:rgba(232,163,61,0.20);--blob-2:rgba(55,191,166,0.17);--blob-3:rgba(77,134,247,0.17);
+    --line-stroke:rgba(255,255,255,0.10);--grid-line:rgba(255,255,255,0.028);
+  }
+  [data-theme="light"]{
+    --glass:rgba(255,255,255,0.64);--glass-strong:rgba(255,255,255,0.84);--glass-soft:rgba(255,255,255,0.5);
+    --glass-brd:rgba(255,255,255,0.85);--glass-brd-strong:rgba(20,23,28,0.10);
+    --sheen:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,255,255,0.35) 42%,rgba(255,255,255,0) 68%);
+    --glass-shadow:0 1px 0 rgba(255,255,255,0.9) inset,0 22px 48px -26px rgba(20,23,28,0.28);
+    --blob-1:rgba(232,163,61,0.20);--blob-2:rgba(15,143,128,0.13);--blob-3:rgba(47,122,224,0.13);
+    --line-stroke:rgba(20,23,28,0.09);--grid-line:rgba(20,23,28,0.035);
+  }
+  .ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+  .ambient .dots{position:absolute;inset:0;
+    background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),
+                     linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+    background-size:46px 46px;mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 10%,transparent 78%);}
+  .ambient .blob{position:absolute;border-radius:50%;filter:blur(90px);will-change:transform;}
+  .ambient .b1{width:600px;height:600px;top:-220px;left:-140px;background:var(--blob-1);
+    animation:drift1 34s ease-in-out infinite alternate;}
+  .ambient .b2{width:540px;height:540px;bottom:-240px;right:-120px;background:var(--blob-2);
+    animation:drift2 42s ease-in-out infinite alternate;}
+  .ambient .b3{width:460px;height:460px;top:36%;right:16%;background:var(--blob-3);
+    animation:drift3 38s ease-in-out infinite alternate;}
+  @keyframes drift1{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(120px,90px,0) scale(1.14)}}
+  @keyframes drift2{0%{transform:translate3d(0,0,0) scale(1.06)}100%{transform:translate3d(-140px,-70px,0) scale(0.92)}}
+  @keyframes drift3{0%{transform:translate3d(0,0,0) scale(0.95)}100%{transform:translate3d(-90px,120px,0) scale(1.12)}}
+  .ambient .lines{position:absolute;inset:0;width:100%;height:100%;}
+  .ambient .lines circle,.ambient .lines path,.ambient .lines rect{fill:none;stroke:var(--line-stroke);
+    vector-effect:non-scaling-stroke;}
+  .ambient .spin-slow{transform-origin:center;animation:spin 120s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ambient .grain{position:absolute;inset:0;opacity:0.035;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");}
+  body > *:not(.ambient){position:relative;z-index:1;}
+  @media(prefers-reduced-motion:reduce){.ambient .blob,.ambient .spin-slow{animation:none !important;}}
+
+  .shell{background:var(--glass-strong);backdrop-filter:blur(34px) saturate(180%);
+    -webkit-backdrop-filter:blur(34px) saturate(180%);border:1px solid var(--glass-brd);
+    box-shadow:var(--glass-shadow),0 40px 80px -30px rgba(0,0,0,0.75);}
+  .side-panel{background:linear-gradient(160deg,rgba(255,255,255,0.05),rgba(255,255,255,0) 60%);
+    border-right:1px solid var(--glass-brd);}
+  .field input,.capability .ic,.side-badge{background:var(--glass-soft);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);border-color:var(--glass-brd);}
+  .btn-login{background:linear-gradient(180deg,#f3b45c,var(--accent));color:#1a1204;
+    box-shadow:0 1px 0 rgba(255,255,255,0.4) inset,0 12px 28px -14px var(--accent);}
+  .grid-overlay{display:none;}
+
 </style>
 </head>
 <body>
+<div class="ambient" aria-hidden="true">
+  <div class="dots"></div>
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <svg class="lines" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+    <circle class="spin-slow" cx="1180" cy="190" r="240" stroke-dasharray="2 10"/>
+    <circle cx="1180" cy="190" r="150"/>
+    <circle cx="210" cy="720" r="196"/>
+    <path d="M-40 640 C 320 520, 560 760, 900 600 S 1360 420, 1520 520" stroke-dasharray="3 9"/>
+    <rect class="spin-slow" x="620" y="80" width="150" height="150" rx="34" stroke-dasharray="4 10"/>
+  </svg>
+  <div class="grain"></div>
+</div>
+
 <div class="grid-overlay"></div>
 
 <div class="shell">

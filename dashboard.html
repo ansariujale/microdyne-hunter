@@ -167,7 +167,7 @@
 
   .main{flex:1;min-width:0;padding:34px 40px 80px;background:transparent;max-width:1600px;}
   .page{display:none;}
-  .page.active{display:block;animation:pageIn 0.42s cubic-bezier(.16,1,.3,1) both;}
+  .page.active{display:block;animation:pageIn 0.42s cubic-bezier(.16,1,.3,1);}
   @keyframes pageIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
   .page-title{font-size:27px;font-weight:600;margin-bottom:6px;color:var(--text);letter-spacing:-0.035em;line-height:1.15;}
   .page-sub{font-size:13.5px;color:var(--text-dim);margin-bottom:30px;letter-spacing:-0.005em;}
@@ -515,7 +515,7 @@
   .ftab-emails.active .ftab-count{color:var(--blue);border-color:var(--blue-border);}
   .funnel-chart-card{background:var(--surface);background-image:var(--panel);border:1px solid var(--border);
     border-radius:16px;padding:24px;margin-bottom:24px;box-shadow:var(--shadow-sm);}
-  @keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @keyframes fadeInUp{from{transform:translateY(8px)}to{transform:none}}
   .funnel-chart-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;
     flex-wrap:wrap;gap:12px;}
   .funnel-chart-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:9px;letter-spacing:-0.02em;}
@@ -568,7 +568,7 @@
 
   /* ── Skeletons ── */
   @keyframes shimmer{0%{background-position:-420px 0}100%{background-position:420px 0}}
-  @keyframes countUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @keyframes countUp{from{transform:translateY(5px) scale(0.985)}to{transform:none}}
   .skeleton{position:relative;overflow:hidden;background:var(--surface2);border-radius:6px;}
   .skeleton::after{content:'';position:absolute;inset:0;
     background:linear-gradient(90deg,transparent,var(--surface3),transparent);animation:shimmer 1.6s infinite;
@@ -584,8 +584,8 @@
   .skeleton-badge{height:19px;width:50px;border-radius:7px;display:inline-block;}
   .skeleton-chart{height:220px;border-radius:12px;margin-top:14px;}
   .skeleton-card{padding:18px;border-radius:14px;border:1px solid var(--border);margin-bottom:12px;}
-  .fade-in{animation:fadeInUp 0.34s cubic-bezier(.16,1,.3,1) both;}
-  .stat-pop{animation:countUp 0.42s cubic-bezier(.16,1,.3,1) both;}
+  .fade-in{animation:fadeInUp 0.34s cubic-bezier(.16,1,.3,1);}
+  .stat-pop{animation:countUp 0.42s cubic-bezier(.16,1,.3,1);}
   .stagger > *:nth-child(1){animation-delay:0.03s;} .stagger > *:nth-child(2){animation-delay:0.06s;}
   .stagger > *:nth-child(3){animation-delay:0.09s;} .stagger > *:nth-child(4){animation-delay:0.12s;}
   .stagger > *:nth-child(5){animation-delay:0.15s;} .stagger > *:nth-child(6){animation-delay:0.18s;}
@@ -805,10 +805,168 @@
     *,*::before,*::after{animation-duration:0.01ms !important;animation-iteration-count:1 !important;
       transition-duration:0.01ms !important;}
   }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     LIQUID GLASS LAYER
+     Translucent surfaces over a drifting field of gradient shapes and
+     hairline geometry. Frosted blur + specular edge + inner sheen.
+     ═══════════════════════════════════════════════════════════════════════ */
+  :root,[data-theme="dark"]{
+    --glass:rgba(17,19,25,0.58);
+    --glass-strong:rgba(15,17,22,0.78);
+    --glass-soft:rgba(255,255,255,0.045);
+    --glass-brd:rgba(255,255,255,0.10);
+    --glass-brd-strong:rgba(255,255,255,0.18);
+    --sheen:linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.02) 38%,rgba(255,255,255,0) 60%);
+    --glass-shadow:0 1px 0 rgba(255,255,255,0.09) inset,0 0 0 0.5px rgba(255,255,255,0.04),
+                   0 26px 56px -28px rgba(0,0,0,0.9),0 6px 18px -12px rgba(0,0,0,0.7);
+    --blob-1:rgba(232,163,61,0.20);--blob-2:rgba(55,191,166,0.17);--blob-3:rgba(77,134,247,0.17);
+    --line-stroke:rgba(255,255,255,0.10);
+  }
+  [data-theme="light"]{
+    --glass:rgba(255,255,255,0.62);
+    --glass-strong:rgba(255,255,255,0.82);
+    --glass-soft:rgba(255,255,255,0.5);
+    --glass-brd:rgba(255,255,255,0.85);
+    --glass-brd-strong:rgba(20,23,28,0.10);
+    --sheen:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,255,255,0.35) 42%,rgba(255,255,255,0) 68%);
+    --glass-shadow:0 1px 0 rgba(255,255,255,0.9) inset,0 0 0 0.5px rgba(20,23,28,0.05),
+                   0 22px 48px -26px rgba(20,23,28,0.28),0 4px 14px -10px rgba(20,23,28,0.14);
+    --blob-1:rgba(232,163,61,0.20);--blob-2:rgba(15,143,128,0.13);--blob-3:rgba(47,122,224,0.13);
+    --line-stroke:rgba(20,23,28,0.09);
+  }
+
+  /* ── Ambient field ── */
+  .ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+  .ambient .dots{position:absolute;inset:0;
+    background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),
+                     linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+    background-size:46px 46px;
+    mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 10%,transparent 78%);}
+  .ambient .blob{position:absolute;border-radius:50%;filter:blur(90px);will-change:transform;}
+  .ambient .b1{width:620px;height:620px;top:-220px;left:-140px;background:var(--blob-1);
+    animation:drift1 34s ease-in-out infinite alternate;}
+  .ambient .b2{width:560px;height:560px;bottom:-240px;right:-120px;background:var(--blob-2);
+    animation:drift2 42s ease-in-out infinite alternate;}
+  .ambient .b3{width:480px;height:480px;top:34%;right:18%;background:var(--blob-3);
+    animation:drift3 38s ease-in-out infinite alternate;}
+  @keyframes drift1{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(120px,90px,0) scale(1.14)}}
+  @keyframes drift2{0%{transform:translate3d(0,0,0) scale(1.06)}100%{transform:translate3d(-140px,-70px,0) scale(0.92)}}
+  @keyframes drift3{0%{transform:translate3d(0,0,0) scale(0.95)}100%{transform:translate3d(-90px,120px,0) scale(1.12)}}
+  .ambient .lines{position:absolute;inset:0;width:100%;height:100%;opacity:0.9;}
+  .ambient .lines circle,.ambient .lines path,.ambient .lines line,.ambient .lines rect{
+    fill:none;stroke:var(--line-stroke);vector-effect:non-scaling-stroke;}
+  .ambient .spin-slow{transform-origin:center;animation:spin 120s linear infinite;}
+  .ambient .spin-rev{transform-origin:center;animation:spin 90s linear infinite reverse;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ambient .grain{position:absolute;inset:0;opacity:0.035;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");}
+  .bg-grid{display:none;}
+
+  /* ── Glass surfaces ── */
+  .panel,.stat-card,.funnel-chart-card,.funnel-tab,.pipeline-step,.table-wrap,.worker-box,.quota-panel{
+    background:var(--glass);background-image:var(--sheen);
+    backdrop-filter:blur(26px) saturate(165%);-webkit-backdrop-filter:blur(26px) saturate(165%);
+    border:1px solid var(--glass-brd);box-shadow:var(--glass-shadow);border-radius:20px;
+  }
+  .stat-card,.funnel-tab,.pipeline-step,.worker-box{border-radius:18px;}
+  .table-wrap{border-radius:18px;}
+  th{background:var(--glass-soft);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+  th:first-child{border-top-left-radius:17px;} th:last-child{border-top-right-radius:17px;}
+
+  /* Specular sweep on hover — the "wet glass" cue */
+  .panel,.stat-card,.funnel-tab,.pipeline-step{position:relative;overflow:hidden;}
+  .panel > *,.stat-card > *,.funnel-tab > *,.pipeline-step > *{position:relative;z-index:1;}
+  .stat-card::before,.funnel-tab::before,.pipeline-step::before{
+    content:'';position:absolute;top:0;left:-60%;width:45%;height:100%;z-index:0;pointer-events:none;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,0.10),transparent);
+    transform:skewX(-14deg);transition:left 0.75s cubic-bezier(.16,1,.3,1);border:none;border-radius:0;opacity:0;}
+  .stat-card:hover::before,.funnel-tab:hover::before,.pipeline-step:hover::before{left:115%;opacity:1;}
+  [data-theme="light"] .stat-card::before,[data-theme="light"] .funnel-tab::before,
+  [data-theme="light"] .pipeline-step::before{background:linear-gradient(100deg,transparent,rgba(255,255,255,0.75),transparent);}
+  /* keep the machined corner ticks on panels only */
+  .panel::before{content:'';position:absolute;top:11px;left:11px;width:9px;height:9px;z-index:2;
+    border-left:1px solid var(--glass-brd-strong);border-top:1px solid var(--glass-brd-strong);
+    border-top-left-radius:3px;background:none;transform:none;opacity:0.7;transition:none;}
+  .panel::after{content:'';position:absolute;bottom:11px;right:11px;width:9px;height:9px;z-index:2;
+    border-right:1px solid var(--glass-brd-strong);border-bottom:1px solid var(--glass-brd-strong);
+    border-bottom-right-radius:3px;opacity:0.7;}
+
+  /* ── Chrome ── */
+  .header{background:var(--glass-strong);backdrop-filter:blur(30px) saturate(170%);
+    -webkit-backdrop-filter:blur(30px) saturate(170%);border-bottom:1px solid var(--glass-brd);
+    box-shadow:0 1px 0 rgba(255,255,255,0.06) inset;}
+  .sidebar{background:var(--glass);backdrop-filter:blur(22px) saturate(150%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);border-right:1px solid var(--glass-brd);}
+  .nav-item.active{background:var(--glass-soft);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    box-shadow:0 1px 0 rgba(255,255,255,0.08) inset,0 6px 16px -12px rgba(0,0,0,0.8);}
+  .main{background:transparent;}
+
+  /* ── Controls ── */
+  .btn,.input,.cmd-hint,.mode-toggle,.theme-toggle,.agent-status,.status-chip,.cycle-info,
+  .funnel-download-btn,.ftab-count,.chat-action-btn,.funnel-chart-subtoggle,.queue-note,.funnel-summary-stat,
+  .funnel-detail-item,.chat-data-card{
+    background:var(--glass-soft);backdrop-filter:blur(14px) saturate(150%);-webkit-backdrop-filter:blur(14px) saturate(150%);
+    border-color:var(--glass-brd);}
+  .btn:hover,.cmd-hint:hover,.mode-toggle:hover,.theme-toggle:hover,.funnel-download-btn:hover{
+    border-color:var(--glass-brd-strong);}
+  .input:focus{border-color:var(--accent-line);}
+  .btn-green{background:linear-gradient(180deg,#f3b45c,var(--accent));border-color:transparent;
+    box-shadow:0 1px 0 rgba(255,255,255,0.4) inset,0 10px 24px -14px var(--accent);}
+  .start-btn{position:relative;overflow:hidden;}
+  .start-btn::after{content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,0.4),rgba(255,255,255,0) 52%);}
+
+  /* ── Overlays ── */
+  .modal,.domain-modal-content,.cmdk-box,.chat-panel,.toast,.chat-cmd-popup{
+    background:var(--glass-strong);backdrop-filter:blur(34px) saturate(180%);
+    -webkit-backdrop-filter:blur(34px) saturate(180%);border:1px solid var(--glass-brd);
+    box-shadow:var(--glass-shadow),var(--shadow-lg);}
+  .modal,.domain-modal-content,.cmdk-box{border-radius:24px;}
+  .toast{border-radius:18px;}
+  .chat-header,.chat-input-area{background:var(--glass-soft);backdrop-filter:blur(16px);
+    -webkit-backdrop-filter:blur(16px);}
+  .chat-msg.agent .chat-msg-bubble{background:var(--glass-soft);backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);border-color:var(--glass-brd);}
+  .chat-input-wrap{background:var(--glass-soft);}
+
+  /* ── Gauge glow ── */
+  .gauge-svg{filter:drop-shadow(0 0 10px rgba(232,163,61,0.16));}
+  .gauge-track{stroke:var(--glass-soft);}
+  .pn-icon{background:var(--glass-soft);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    border-color:var(--glass-brd);}
+  .pipeline-node.active .pn-icon{box-shadow:0 0 0 4px var(--accent-soft),0 0 18px -4px var(--accent);}
+
+  @media(max-width:768px){
+    .panel,.stat-card,.funnel-chart-card{backdrop-filter:blur(18px) saturate(150%);
+      -webkit-backdrop-filter:blur(18px) saturate(150%);}
+    .ambient .blob{filter:blur(70px);}
+  }
+  @media(prefers-reduced-motion:reduce){
+    .ambient .blob,.ambient .spin-slow,.ambient .spin-rev{animation:none !important;}
+  }
+
 </style>
 </head>
 <body>
-<div class="bg-grid"></div>
+<div class="ambient" aria-hidden="true">
+  <div class="dots"></div>
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <svg class="lines" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+    <circle class="spin-slow" cx="1180" cy="190" r="240" stroke-dasharray="2 10"/>
+    <circle cx="1180" cy="190" r="150"/>
+    <circle class="spin-rev" cx="210" cy="720" r="300" stroke-dasharray="1 14"/>
+    <circle cx="210" cy="720" r="196"/>
+    <path d="M-40 640 C 320 520, 560 760, 900 600 S 1360 420, 1520 520" stroke-dasharray="3 9"/>
+    <path d="M-40 300 C 300 220, 620 420, 980 300" />
+    <rect class="spin-slow" x="620" y="80" width="150" height="150" rx="34" stroke-dasharray="4 10"/>
+    <line x1="0" y1="118" x2="1440" y2="118"/>
+    <line x1="1080" y1="0" x2="1080" y2="900" stroke-dasharray="2 12"/>
+  </svg>
+  <div class="grain"></div>
+</div>
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- HEADER -->

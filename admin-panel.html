@@ -182,9 +182,82 @@
   }
   .toast.show{transform:translateY(0);opacity:1;}
   .toast .dot{width:8px;height:8px;border-radius:50%;background:var(--success);flex-shrink:0;}
+
+  /* ═══ LIQUID GLASS LAYER ═══ */
+  :root,[data-theme="dark"]{
+    --glass:rgba(17,19,25,0.58);--glass-strong:rgba(15,17,22,0.8);--glass-soft:rgba(255,255,255,0.045);
+    --glass-brd:rgba(255,255,255,0.10);--glass-brd-strong:rgba(255,255,255,0.18);
+    --sheen:linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.02) 38%,rgba(255,255,255,0) 60%);
+    --glass-shadow:0 1px 0 rgba(255,255,255,0.09) inset,0 26px 56px -28px rgba(0,0,0,0.9);
+    --blob-1:rgba(232,163,61,0.20);--blob-2:rgba(55,191,166,0.17);--blob-3:rgba(77,134,247,0.17);
+    --line-stroke:rgba(255,255,255,0.10);--grid-line:rgba(255,255,255,0.028);
+  }
+  [data-theme="light"]{
+    --glass:rgba(255,255,255,0.64);--glass-strong:rgba(255,255,255,0.84);--glass-soft:rgba(255,255,255,0.5);
+    --glass-brd:rgba(255,255,255,0.85);--glass-brd-strong:rgba(20,23,28,0.10);
+    --sheen:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,255,255,0.35) 42%,rgba(255,255,255,0) 68%);
+    --glass-shadow:0 1px 0 rgba(255,255,255,0.9) inset,0 22px 48px -26px rgba(20,23,28,0.28);
+    --blob-1:rgba(232,163,61,0.20);--blob-2:rgba(15,143,128,0.13);--blob-3:rgba(47,122,224,0.13);
+    --line-stroke:rgba(20,23,28,0.09);--grid-line:rgba(20,23,28,0.035);
+  }
+  .ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+  .ambient .dots{position:absolute;inset:0;
+    background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),
+                     linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+    background-size:46px 46px;mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 10%,transparent 78%);}
+  .ambient .blob{position:absolute;border-radius:50%;filter:blur(90px);will-change:transform;}
+  .ambient .b1{width:600px;height:600px;top:-220px;left:-140px;background:var(--blob-1);
+    animation:drift1 34s ease-in-out infinite alternate;}
+  .ambient .b2{width:540px;height:540px;bottom:-240px;right:-120px;background:var(--blob-2);
+    animation:drift2 42s ease-in-out infinite alternate;}
+  .ambient .b3{width:460px;height:460px;top:36%;right:16%;background:var(--blob-3);
+    animation:drift3 38s ease-in-out infinite alternate;}
+  @keyframes drift1{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(120px,90px,0) scale(1.14)}}
+  @keyframes drift2{0%{transform:translate3d(0,0,0) scale(1.06)}100%{transform:translate3d(-140px,-70px,0) scale(0.92)}}
+  @keyframes drift3{0%{transform:translate3d(0,0,0) scale(0.95)}100%{transform:translate3d(-90px,120px,0) scale(1.12)}}
+  .ambient .lines{position:absolute;inset:0;width:100%;height:100%;}
+  .ambient .lines circle,.ambient .lines path,.ambient .lines rect{fill:none;stroke:var(--line-stroke);
+    vector-effect:non-scaling-stroke;}
+  .ambient .spin-slow{transform-origin:center;animation:spin 120s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ambient .grain{position:absolute;inset:0;opacity:0.035;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");}
+  body > *:not(.ambient){position:relative;z-index:1;}
+  @media(prefers-reduced-motion:reduce){.ambient .blob,.ambient .spin-slow{animation:none !important;}}
+
+  .card,.limit-strip,.toggle-row,.kw-box,.kw-locked-box{
+    background:var(--glass);background-image:var(--sheen);
+    backdrop-filter:blur(26px) saturate(165%);-webkit-backdrop-filter:blur(26px) saturate(165%);
+    border:1px solid var(--glass-brd);box-shadow:var(--glass-shadow);border-radius:20px;}
+  .limit-strip,.toggle-row,.kw-box,.kw-locked-box{border-radius:16px;}
+  .header{background:var(--glass-strong);backdrop-filter:blur(30px) saturate(170%);
+    -webkit-backdrop-filter:blur(30px) saturate(170%);border-bottom:1px solid var(--glass-brd);}
+  .input,.btn-back,.theme-toggle,.btn-logout,.side-nav a.active,.kw-chip,.badge{
+    background:var(--glass-soft);backdrop-filter:blur(14px) saturate(150%);
+    -webkit-backdrop-filter:blur(14px) saturate(150%);border-color:var(--glass-brd);}
+  .toast{background:var(--glass-strong);backdrop-filter:blur(30px) saturate(175%);
+    -webkit-backdrop-filter:blur(30px) saturate(175%);border:1px solid var(--glass-brd);border-radius:16px;}
+  .btn-save{position:relative;overflow:hidden;box-shadow:0 1px 0 rgba(255,255,255,0.35) inset,
+    0 10px 24px -14px var(--accent);}
+
 </style>
 </head>
 <body>
+<div class="ambient" aria-hidden="true">
+  <div class="dots"></div>
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <svg class="lines" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+    <circle class="spin-slow" cx="1180" cy="190" r="240" stroke-dasharray="2 10"/>
+    <circle cx="1180" cy="190" r="150"/>
+    <circle cx="210" cy="720" r="196"/>
+    <path d="M-40 640 C 320 520, 560 760, 900 600 S 1360 420, 1520 520" stroke-dasharray="3 9"/>
+    <rect class="spin-slow" x="620" y="80" width="150" height="150" rx="34" stroke-dasharray="4 10"/>
+  </svg>
+  <div class="grain"></div>
+</div>
+
 
 <div class="header">
   <img src="/images/logo-mark.png" alt="Microdyne">
