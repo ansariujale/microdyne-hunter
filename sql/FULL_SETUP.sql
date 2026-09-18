@@ -330,3 +330,9 @@ CREATE INDEX IF NOT EXISTS idx_leads_form_pending ON leads(form_submission_statu
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS state TEXT DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_leads_state ON leads(state);
 CREATE INDEX IF NOT EXISTS idx_leads_city ON leads(city);
+
+-- ═══════════════════════════════════════════════════════════════
+-- Migration 006: Track where a reply came from (email vs contact form)
+-- ═══════════════════════════════════════════════════════════════
+
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS reply_source TEXT DEFAULT '';

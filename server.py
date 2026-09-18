@@ -132,8 +132,9 @@ def _capture_previous_business_day_snapshot() -> dict:
         now_local = datetime.now(timezone.utc).astimezone()
         start_local = datetime(prev_day.year, prev_day.month, prev_day.day, 11, 0, 0, tzinfo=now_local.tzinfo)
         end_local = start_local + timedelta(days=1)
-        start_utc = start_local.astimezone(timezone.utc).isoformat()
-        end_utc = end_local.astimezone(timezone.utc).isoformat()
+        # Z suffix, not +00:00 — a literal "+" in a PostgREST filter is read as a space
+        start_utc = start_local.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        end_utc = end_local.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         return {
             "business_date": prev_day.isoformat(),
             "leads": int(db.count("leads", {"and": f"(created_at.gte.{start_utc},created_at.lt.{end_utc})"}) or 0),
