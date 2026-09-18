@@ -1099,6 +1099,27 @@
   .gauge-svg{filter:drop-shadow(0 0 12px rgba(109,124,255,0.22));}
   .nav-item.active::before{background:linear-gradient(180deg,var(--accent),var(--accent-2));}
 
+  /* top row: console fills the same height as the limits panel */
+  .bento.equal > .panel{display:flex;flex-direction:column;}
+  .bento.equal > .panel > .panel-body{display:flex;flex-direction:column;flex:1;}
+  .bento.equal .live-pipeline{margin-top:auto;padding-top:18px;}
+
+  /* gauge: the unfilled arc needs to read as a track, not disappear */
+  :root,[data-theme="dark"]{--gauge-track:rgba(255,255,255,0.13);}
+  [data-theme="light"]{--gauge-track:rgba(20,23,28,0.11);}
+  .gauge-track{stroke:var(--gauge-track);stroke-width:7.5;}
+  .gauge-arc{stroke-width:7.5;}
+
+  /* sample data badge — impossible to mistake for live numbers */
+  .sample-badge{display:none;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:8px;
+    font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:500;letter-spacing:0.14em;
+    text-transform:uppercase;cursor:pointer;
+    background:rgba(255,159,104,0.14);border:1px solid rgba(255,159,104,0.4);color:var(--orange);}
+  body.preview .sample-badge{display:inline-flex;}
+  body.preview .hero::after{filter:saturate(1.15);}
+  .sample-badge .sb-dot{width:5px;height:5px;border-radius:50%;background:var(--orange);
+    box-shadow:0 0 0 3px rgba(255,159,104,0.18);}
+
   @media(max-width:768px){
     .hero{margin:-20px -16px 20px;padding:26px 16px 22px;}
     .hero .page-title{font-size:27px;}
@@ -1148,6 +1169,9 @@
   <div class="logo" style="background:#fff;border-color:#3498db;padding:2px;"><img src="images/logo-mark.png" alt="Microdyne Hunter" style="width:24px;height:24px;object-fit:contain;"></div>
   <div class="h-title">Microdyne Hunter <span>Command Center v2.0</span></div>
   <div class="h-right">
+    <button class="sample-badge" id="sampleBadge" onclick="togglePreview()" title="Showing sample data — click to switch back to live">
+      <span class="sb-dot"></span> Sample data
+    </button>
     <button class="cmd-hint" onclick="openCmdk()" title="Command palette">
       <span>Search &amp; commands</span><kbd id="cmdkKey">Ctrl K</kbd>
     </button>
@@ -1235,7 +1259,7 @@
       <div id="dailyResetNotice" class="alert alert-blue" style="display:none;margin-bottom:12px;"></div>
 
       <!-- CONSOLE + GAUGES -->
-      <div class="bento">
+      <div class="bento equal">
        <div class="panel col-8">
         <div class="panel-body">
         <div class="console-head">
@@ -4665,6 +4689,7 @@ async function pollStatus(){
   if(!data) return;
   renderDailyResetNotice(data.daily_reset_notice);
   renderQuota(data.quota);
+  applyPreview();
   // Update agent status indicator
   const statusEl = document.getElementById('agentStatus');
   if(data.status==='running'){
@@ -4934,6 +4959,102 @@ async function saveFormMessage(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SAMPLE DATA — populates the UI for design review.
+// Never mixed into live numbers: it only runs when preview mode is on,
+// and the header shows a "Sample data" badge the whole time.
+// Toggle with ?preview=1, the command palette, or the badge itself.
+// ═══════════════════════════════════════════════════════════════
+let PREVIEW = (localStorage.getItem('mh-preview') === '1') ||
+              new URLSearchParams(location.search).get('preview') === '1';
+
+function seeded(n){ // deterministic, so the charts don't dance between polls
+  let x = Math.sin(n * 9973.7) * 10000;
+  return x - Math.floor(x);
+}
+
+const SAMPLE = {
+  series(key, days, peak, floor = 0){
+    const out = [];
+    for(let i = 0; i < days; i++){
+      const ramp = 0.38 + 0.62 * (i / Math.max(1, days - 1));   // a pipeline that grows
+      const jitter = 0.72 + seeded(i + key.length * 31) * 0.5;  // steady week-to-week noise
+      out.push(Math.max(floor, Math.round(peak * ramp * jitter)));
+    }
+    return out;
+  },
+  get trends(){
+    return {
+      leads: this.series('leads', 14, 46, 6),
+      emails: this.series('emails', 14, 10, 2).map(v => Math.min(10, v)),
+      forms: this.series('forms', 14, 82, 12),
+      opens: this.series('opens', 14, 26, 1),
+      replies: this.series('replies', 14, 6),
+    };
+  },
+  totals: { leads: 1284, emails: 7, forms: 63, replies: 34, opened: 212 },
+  quota: { email_limit: 10, emails_sent_today: 7, form_limit: 100, forms_submitted_today: 63,
+           pending_email: 118, pending_form: 46, extraction_needed: false,
+           auto_daily_run: true, daily_run_time: '11:05', reset_time: '11:00' },
+  hotLeads: [
+    ['Sundar Pumps & Valves', 'Coimbatore · India', 'Replied', 92],
+    ['Kirloskar Process Equipment', 'Pune · India', 'Opened 3×', 88],
+    ['Emirates Hydraulic Systems', 'Sharjah · UAE', 'Opened', 85],
+    ['Deccan Gearbox Works', 'Hyderabad · India', 'Replied', 81],
+    ['Rhein Kompressoren GmbH', 'Essen · Germany', 'Opened', 78],
+  ],
+};
+
+function togglePreview(){
+  PREVIEW = !PREVIEW;
+  localStorage.setItem('mh-preview', PREVIEW ? '1' : '0');
+  document.body.classList.toggle('preview', PREVIEW);
+  if(PREVIEW){ applyPreview(); refreshTrends(); }
+  else location.reload();
+}
+
+function applyPreview(){
+  if(!PREVIEW) return;
+  const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+  const t = SAMPLE.totals;
+  set('statTotalLeads', t.leads.toLocaleString());
+  set('statEmailsSent', t.emails);
+  set('statFormsFilled', t.forms);
+  set('statReplies', t.replies);
+  set('statLeadsChange', '+46 today');
+  set('statEmailsChange', `Today ${t.emails} · ${10 - t.emails} left today · ${SAMPLE.quota.pending_email} pending`);
+  set('statFormsChange', `Today ${t.forms}`);
+  set('statRepliesChange', `${t.opened} opens tracked`);
+  set('heroPillLeads', t.leads.toLocaleString());
+  set('navLeadCount', t.leads.toLocaleString());
+  set('navEmailCount', t.emails);
+  set('navFormCount', t.forms);
+  set('emailTodaySent', t.emails);
+  set('emailOpenRate', '31%');
+  set('emailReplyRate', '9%');
+  set('trackingTotalOpens', t.opened);
+  set('trackingUniqueOpens', 148);
+  renderQuota(SAMPLE.quota);
+
+  const hot = document.getElementById('hotLeadsList');
+  if(hot) hot.innerHTML = SAMPLE.hotLeads.map(([name, place, state, score]) => `
+    <div class="feed-structured">
+      <span class="feed-icon ${state.startsWith('Replied') ? 'lead' : 'email'}"></span>
+      <div class="feed-body">
+        <div class="feed-title">${name}</div>
+        <div class="feed-detail">${place} · ${state}</div>
+      </div>
+      <span class="tag ${state.startsWith('Replied') ? 'tag-green' : 'tag-blue'}">${score}</span>
+    </div>`).join('');
+  const hotCount = document.getElementById('hotLeadCount');
+  if(hotCount) hotCount.textContent = SAMPLE.hotLeads.length;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.body.classList.toggle('preview', PREVIEW);
+  if(PREVIEW) setTimeout(applyPreview, 400);
+});
+
+// ═══════════════════════════════════════════════════════════════
 // SPARKLINES — real 14-day history from /api/trends
 // ═══════════════════════════════════════════════════════════════
 function drawSpark(svgId, values, gradId){
@@ -4986,9 +5107,14 @@ function setTrend(id, values){
 }
 
 async function refreshTrends(){
-  const data = await api('/api/trends?days=14');
-  if(!data || !data.series) return;
-  const s = data.series;
+  let s;
+  if(PREVIEW){
+    s = SAMPLE.trends;
+  } else {
+    const data = await api('/api/trends?days=14');
+    if(!data || !data.series) return;
+    s = data.series;
+  }
   drawSpark('sparkLeads', s.leads, 'gLeads');   setTrend('trendLeads', s.leads);
   drawSpark('sparkEmails', s.emails, 'gEmails'); setTrend('trendEmails', s.emails);
   drawSpark('sparkForms', s.forms, 'gForms');   setTrend('trendForms', s.forms);
@@ -5010,6 +5136,7 @@ const CMDK_ITEMS = [
   {label:'Start / stop the daily cycle', hint:'Action', icon:'play', run:()=>toggleAgent()},
   {label:'Ask the agent', hint:'Action', icon:'sparkles', run:()=>toggleChat()},
   {label:'Switch light / dark theme', hint:'Action', icon:'moon', run:()=>toggleTheme()},
+  {label:'Toggle sample data (design preview)', hint:'Action', icon:'flask-conical', run:()=>togglePreview()},
   {label:'Admin panel', hint:'Open', icon:'settings', run:()=>window.open('/admin','_blank')},
 ];
 let cmdkIdx = 0, cmdkMatches = CMDK_ITEMS;
