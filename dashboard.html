@@ -1873,7 +1873,7 @@
 
       <!-- Download -->
       <div style="display:flex;gap:12px;margin-top:8px;">
-        <button class="btn btn-green" onclick="downloadReportPDF()" style="display:flex;align-items:center;gap:6px;">
+        <button class="btn btn-green" onclick="downloadReportPDF(this)" style="display:flex;align-items:center;gap:6px;">
           <i data-lucide="download" style="width:14px;height:14px;"></i> Download PDF Report
         </button>
         <button class="btn" onclick="downloadReportCSV()" style="display:flex;align-items:center;gap:6px;">
@@ -3957,6 +3957,7 @@ function debounceFormFilter(){
 // REPORT SECTION
 // ═══════════════════════════════════════════════════════════════
 let _rptData = [];
+let _rptFiltered = [];
 let _rptTimer = null;
 
 function debounceReport(){
@@ -4030,6 +4031,7 @@ function applyReportFilters(){
     return true;
   });
 
+  _rptFiltered = filtered;   // the PDF exports precisely what the table shows
   document.getElementById('rptFilterCount').textContent = filtered.length + ' of ' + _rptData.filter(l=>l.email_sent||l.form_filled).length + ' records';
 
   const tbody = document.getElementById('rptTableBody');
@@ -4108,63 +4110,453 @@ function downloadReportCSV(){
   a.click();
 }
 
-function downloadReportPDF(){
-  const filtered = _rptData.filter(l => l.email_sent || l.form_filled);
-  if(!filtered.length){ alert('No data to export'); return; }
+// ═══════════════════════════════════════════════════════════════
+// REPORT PDF — the printable twin of this dashboard.
+//
+// Nothing about the look is written down twice: the colours, fonts and
+// logo are read out of the live page at export time, so a future change
+// to the theme shows up in the PDF without anyone editing this file.
+// The light palette is used because the report is meant for paper.
+// ═══════════════════════════════════════════════════════════════
 
-  // Get counts from filtered data (no card elements)
-  const allOutreached = _rptData.filter(l=>l.email_sent||l.form_filled);
-  const totalLeads = _rptData.length;
-  const emailsSent = _rptData.filter(l=>l.email_sent).length;
-  const formsFilled = _rptData.filter(l=>l.form_filled).length;
-  const replies = _rptData.filter(l=>l.replied).length;
-  const dateStr = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+// Design tokens lifted straight from the stylesheet.
+const REPORT_TOKENS = [
+  'bg', 'bg-deep', 'surface', 'surface2', 'surface3', 'border', 'border-light', 'hairline',
+  'text', 'text-muted', 'text-dim', 'accent', 'accent-2', 'accent-3', 'accent-soft', 'accent-line',
+  'green', 'green-bg', 'green-border', 'blue', 'blue-bg', 'blue-border',
+  'purple', 'purple-bg', 'purple-border', 'cyan', 'cyan-bg', 'cyan-border',
+  'orange', 'orange-bg', 'orange-border', 'red', 'red-bg', 'red-border',
+  'row-border', 'btn-text-on-green',
+];
 
-  let tableRows = filtered.map((l,i) =>
-    '<tr>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(i+1)+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;font-weight:600;">'+(l.company_name||'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.contact_email||'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.country||'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.state||'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.city||'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.lead_type||'-').replace(/_/g,' ')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.email_sent?'Yes':'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.email_opened?'Opened':'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.form_filled?'Yes':'-')+'</td>' +
-    '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.replied?'Yes':'-')+'</td>' +
-    '</tr>'
-  ).join('');
+function readReportTheme(){
+  // A probe carrying data-theme="light" resolves whatever that block currently
+  // defines — no copy of the palette lives here.
+  const probe = document.createElement('div');
+  probe.setAttribute('data-theme', 'light');
+  probe.style.cssText = 'position:absolute;left:-9999px;top:0;width:0;height:0;';
+  document.body.appendChild(probe);
+  const cs = getComputedStyle(probe);
+  const theme = {};
+  REPORT_TOKENS.forEach(name => {
+    theme[name] = (cs.getPropertyValue('--' + name) || '').trim();
+  });
 
-  const html = '<!DOCTYPE html><html><head><title>Microdyne Engineering — Pipeline Report</title>' +
-    '<style>body{font-family:Arial,sans-serif;padding:40px;color:#2c3e50;} ' +
-    'h1{color:#3498db;font-size:22px;margin-bottom:4px;} ' +
-    '.sub{color:#7f8c8d;font-size:13px;margin-bottom:24px;} ' +
-    '.summary{display:flex;gap:24px;margin-bottom:24px;flex-wrap:wrap;} ' +
-    '.summary-item{background:#f8f9fa;border:1px solid #ddd;border-radius:8px;padding:12px 20px;text-align:center;min-width:120px;} ' +
-    '.summary-item .val{font-size:22px;font-weight:700;color:#3498db;} ' +
-    '.summary-item .lbl{font-size:11px;color:#7f8c8d;margin-top:2px;} ' +
-    'table{width:100%;border-collapse:collapse;margin-top:16px;} ' +
-    'th{background:#3498db;color:#fff;padding:8px;font-size:11px;text-align:left;border:1px solid #217dbb;} ' +
-    '</style></head><body>' +
-    '<h1>Microdyne Engineering — Pipeline Report</h1>' +
-    '<div class="sub">Generated on ' + dateStr + '</div>' +
-    '<div class="summary">' +
-    '<div class="summary-item"><div class="val">'+totalLeads+'</div><div class="lbl">Total Leads</div></div>' +
-    '<div class="summary-item"><div class="val">'+emailsSent+'</div><div class="lbl">Emails Sent</div></div>' +
-    '<div class="summary-item"><div class="val">'+formsFilled+'</div><div class="lbl">Forms Filled</div></div>' +
-    '<div class="summary-item"><div class="val">'+replies+'</div><div class="lbl">Replies</div></div>' +
-    '</div>' +
-    '<table><thead><tr>' +
-    '<th>#</th><th>Company</th><th>Email</th><th>Country</th><th>State</th><th>City</th><th>Type</th><th>Email Sent</th><th>Opened</th><th>Form Filled</th><th>Replied</th>' +
-    '</tr></thead><tbody>' + tableRows + '</tbody></table>' +
-    '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">Microdyne Engineering | MicrodyneHunter v2 | ' + dateStr + '</div>' +
-    '</body></html>';
+  const mono = document.createElement('span');
+  mono.className = 'mono';
+  probe.appendChild(mono);
+  theme.fontMono = getComputedStyle(mono).fontFamily;
+  probe.remove();
 
-  const win = window.open('','_blank');
+  theme.fontSans = getComputedStyle(document.body).fontFamily;
+  const title = document.querySelector('.hero .page-title em');
+  theme.fontDisplay = title ? getComputedStyle(title).fontFamily : theme.fontSans;
+  return theme;
+}
+
+// Carry the same webfonts across so the type matches, not just the colours.
+function reportFontLinks(){
+  return [...document.querySelectorAll('link[rel="preconnect"], link[rel="stylesheet"]')]
+    .filter(l => (l.href || '').includes('fonts.g'))
+    .map(l => l.outerHTML)
+    .join('\n');
+}
+
+// Inline the logo so printing never races the network for it.
+async function reportLogo(){
+  try {
+    const resp = await fetch('images/logo-mark.png');
+    if(!resp.ok) throw new Error(resp.status);
+    const blob = await resp.blob();
+    return await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(blob);
+    });
+  } catch(e){
+    return new URL('images/logo-mark.png', location.href).href;
+  }
+}
+
+function esc(value){
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function reportStyles(t){
+  return `
+  @page{size:A4 landscape;margin:11mm 10mm 15mm;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body{
+    font-family:${t.fontSans};font-feature-settings:'cv11','ss01';letter-spacing:-0.006em;
+    background:${t.bg};color:${t.text};font-size:11px;line-height:1.5;
+  }
+  .sheet{max-width:1160px;margin:0 auto;padding:0 0 26px;}
+  .mono{font-family:${t.fontMono};font-variant-numeric:tabular-nums;}
+  .eyebrow{
+    font-family:${t.fontMono};font-size:8.5px;font-weight:500;text-transform:uppercase;
+    letter-spacing:0.16em;color:${t['text-dim']};
+  }
+
+  /* ── Cover, built like the dashboard hero ── */
+  .cover{
+    position:relative;overflow:hidden;border:1px solid ${t.border};border-radius:16px;
+    padding:26px 28px 24px;margin-bottom:18px;background:${t.surface};
+    break-inside:avoid;
+  }
+  .cover::after{
+    content:'';position:absolute;inset:0;z-index:0;
+    background:
+      radial-gradient(120% 150% at 6% -60%, ${t['accent-soft']}, transparent 60%),
+      radial-gradient(90% 130% at 84% -30%, ${t['purple-bg']}, transparent 58%);
+  }
+  .cover-inner{position:relative;z-index:1;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;}
+  .brand{display:flex;align-items:center;gap:11px;margin-bottom:14px;}
+  .brand img{width:30px;height:30px;object-fit:contain;background:#fff;border-radius:8px;padding:3px;
+    box-shadow:0 0 0 1px ${t.border};}
+  .brand .bt{display:flex;flex-direction:column;line-height:1.25;}
+  .brand .bt strong{font-size:12.5px;font-weight:600;letter-spacing:-0.01em;}
+  .brand .bt span{font-family:${t.fontMono};font-size:8.5px;color:${t['text-dim']};
+    letter-spacing:0.14em;text-transform:uppercase;}
+  .cover h1{font-size:30px;font-weight:500;letter-spacing:-0.04em;line-height:1.05;margin-top:4px;}
+  .cover h1 em{font-family:${t.fontDisplay};font-style:italic;font-weight:400;color:${t.accent};}
+  .cover .lede{font-size:11.5px;color:${t['text-muted']};margin-top:7px;max-width:62ch;}
+  .cover-meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-align:right;}
+  .pill{
+    display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+    background:${t['accent-soft']};border:1px solid ${t['accent-line']};
+    font-family:${t.fontMono};font-size:8.5px;letter-spacing:0.1em;text-transform:uppercase;
+    color:${t.accent};white-space:nowrap;
+  }
+  .pill.plain{background:${t.surface2};border-color:${t.border};color:${t['text-muted']};}
+
+  /* ── Sections ── */
+  .section{margin-top:18px;break-inside:avoid;}
+  .section-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:9px;}
+  .section-head h2{font-size:14px;font-weight:600;letter-spacing:-0.02em;color:${t.text};}
+  .section-head .note{font-size:10px;color:${t['text-dim']};}
+
+  /* ── Stat cards ── */
+  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;}
+  .stat{
+    position:relative;background:${t.surface};border:1px solid ${t.border};border-radius:11px;
+    padding:12px 13px 11px;overflow:hidden;
+  }
+  .stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:${t.accent};opacity:0.85;}
+  .stat .k{font-family:${t.fontMono};font-size:8px;letter-spacing:0.14em;text-transform:uppercase;color:${t['text-dim']};}
+  .stat .v{font-size:23px;font-weight:600;letter-spacing:-0.035em;margin-top:5px;line-height:1;
+    font-variant-numeric:tabular-nums;}
+  .stat .s{font-size:9.5px;color:${t['text-muted']};margin-top:4px;}
+  .stat.is-green::before{background:${t.green};} .stat.is-green .v{color:${t.green};}
+  .stat.is-cyan::before{background:${t.cyan};}  .stat.is-cyan .v{color:${t.cyan};}
+  .stat.is-purple::before{background:${t.purple};} .stat.is-purple .v{color:${t.purple};}
+  .stat.is-orange::before{background:${t.orange};} .stat.is-orange .v{color:${t.orange};}
+
+  /* ── Today's cycle ── */
+  .status{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
+  .status-card{background:${t.surface};border:1px solid ${t.border};border-radius:11px;padding:12px 13px;}
+  .status-card .k{font-family:${t.fontMono};font-size:8px;letter-spacing:0.14em;text-transform:uppercase;
+    color:${t['text-dim']};}
+  .status-card .v{font-size:15px;font-weight:600;margin-top:5px;letter-spacing:-0.02em;
+    font-variant-numeric:tabular-nums;}
+  .meter{height:4px;border-radius:99px;background:${t.surface3};margin-top:8px;overflow:hidden;}
+  .meter i{display:block;height:100%;border-radius:99px;background:${t.accent};}
+  .status-card .s{font-size:9.5px;color:${t['text-muted']};margin-top:6px;}
+
+  /* ── Table ── */
+  .table-card{background:${t.surface};border:1px solid ${t.border};border-radius:12px;overflow:hidden;}
+  table{width:100%;border-collapse:collapse;}
+  thead{display:table-header-group;}
+  th{
+    background:${t.surface2};text-align:left;padding:8px 9px;
+    font-family:${t.fontMono};font-size:8px;font-weight:500;letter-spacing:0.12em;
+    text-transform:uppercase;color:${t['text-dim']};
+    border-bottom:1px solid ${t.border};white-space:nowrap;
+  }
+  td{padding:7px 9px;border-bottom:1px solid ${t['row-border']};vertical-align:top;font-size:10px;
+     color:${t['text-muted']};}
+  tr{break-inside:avoid;}
+  tbody tr:nth-child(even){background:${t.surface2};}
+  td.idx{font-family:${t.fontMono};color:${t['text-dim']};font-size:9px;}
+  td .primary{color:${t.text};font-weight:600;font-size:10.5px;}
+  td .secondary{color:${t['text-dim']};font-size:9px;margin-top:2px;}
+  td.num{font-family:${t.fontMono};font-variant-numeric:tabular-nums;text-align:right;}
+  .score{font-family:${t.fontMono};font-weight:600;color:${t.text};}
+  .tag{
+    display:inline-block;padding:2px 7px;border-radius:5px;font-size:8.5px;font-weight:600;
+    letter-spacing:0.02em;white-space:nowrap;
+  }
+  .tag-green{background:${t['green-bg']};color:${t.green};border:1px solid ${t['green-border']};}
+  .tag-cyan{background:${t['cyan-bg']};color:${t.cyan};border:1px solid ${t['cyan-border']};}
+  .tag-purple{background:${t['purple-bg']};color:${t.purple};border:1px solid ${t['purple-border']};}
+  .tag-orange{background:${t['orange-bg']};color:${t.orange};border:1px solid ${t['orange-border']};}
+  .tag-red{background:${t['red-bg']};color:${t.red};border:1px solid ${t['red-border']};}
+  .muted{color:${t['text-dim']};}
+
+  /* ── Repeating footer ── */
+  .footer{
+    position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;
+    padding:5px 2px;font-family:${t.fontMono};font-size:8px;letter-spacing:0.1em;
+    text-transform:uppercase;color:${t['text-dim']};border-top:1px solid ${t.border};
+    background:${t.bg};
+  }
+
+  @media screen{
+    body{padding:26px 20px;}
+    .footer{position:static;margin-top:20px;}
+  }
+  @media print{
+    .stats{grid-template-columns:repeat(6,1fr);}
+    .cover,.section{break-inside:avoid;}
+  }`;
+}
+
+function statusTag(on, label, tone){
+  return on ? `<span class="tag tag-${tone}">${esc(label)}</span>`
+            : '<span class="muted">&mdash;</span>';
+}
+
+function buildReportDocument(o){
+  const t = o.theme, s = o.summary, q = o.quota || {};
+  const pct = (a, b) => b > 0 ? Math.round(a / b * 100) + '%' : '0%';
+  const dateLong = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
+  const timeStr = new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+
+  const rows = o.leads.map((l, i) => {
+    const place = [l.city, l.state, l.country].filter(Boolean).join(', ');
+    const activity = l.replied_at || l.email_sent_at || l.form_last_attempted_at || l.created_at;
+    const formTag = l.form_filled || l.form_submission_status === 'success'
+      ? '<span class="tag tag-purple">Filled</span>'
+      : (l.form_submission_status === 'failed'
+          ? '<span class="tag tag-red">Failed</span>'
+          : '<span class="muted">&mdash;</span>');
+    return `<tr>
+      <td class="idx">${i + 1}</td>
+      <td>
+        <div class="primary">${esc(l.company_name || '-')}</div>
+        ${l.company_domain ? `<div class="secondary">${esc(l.company_domain)}</div>` : ''}
+      </td>
+      <td>
+        <div>${esc(l.contact_name || '-')}</div>
+        ${l.contact_email ? `<div class="secondary">${esc(l.contact_email)}</div>` : ''}
+      </td>
+      <td>${esc(place || '-')}</td>
+      <td>${esc((l.lead_type || '-').replace(/_/g, ' '))}</td>
+      <td class="num"><span class="score">${l.score || 0}</span></td>
+      <td>${statusTag(l.email_sent, 'Sent', 'green')}</td>
+      <td>${statusTag(l.email_opened, l.open_count > 1 ? 'Opened ' + l.open_count + '×' : 'Opened', 'cyan')}</td>
+      <td>${formTag}</td>
+      <td>${statusTag(l.replied, 'Replied', 'orange')}</td>
+      <td class="num">${activity ? esc(new Date(activity).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'2-digit'})) : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  const meter = (used, limit) => {
+    const width = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
+    return `<div class="meter"><i style="width:${width}%"></i></div>`;
+  };
+
+  const filterPills = o.filters.length
+    ? o.filters.map(f => `<span class="pill plain">${esc(f)}</span>`).join('')
+    : '<span class="pill plain">No filters &middot; all outreach</span>';
+
+  return `<!DOCTYPE html><html lang="en" data-theme="light"><head>
+<meta charset="UTF-8">
+<title>${esc(o.company)} — Pipeline Report — ${dateLong}</title>
+${o.fontLinks}
+<style>${reportStyles(t)}</style>
+</head><body>
+<div class="sheet">
+
+  <header class="cover">
+    <div class="cover-inner">
+      <div>
+        <div class="brand">
+          ${o.logo ? `<img src="${o.logo}" alt="">` : ''}
+          <div class="bt"><strong>${esc(o.company)}</strong><span>Microdyne Hunter</span></div>
+        </div>
+        <span class="eyebrow">Intelligence &middot; Outreach Report</span>
+        <h1>Pipeline <em>report</em></h1>
+        <p class="lede">Every lead contacted by email or contact form, with the current state of
+          today's capped outreach cycle.</p>
+      </div>
+      <div class="cover-meta">
+        <span class="pill">${esc(dateLong)} &middot; ${esc(timeStr)}</span>
+        <span class="pill plain">${o.leads.length} record${o.leads.length === 1 ? '' : 's'}</span>
+        ${filterPills}
+      </div>
+    </div>
+  </header>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>Summary</h2>
+      <span class="note">Across ${s.total} lead${s.total === 1 ? '' : 's'} in scope</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">Total leads</div><div class="v">${s.total.toLocaleString()}</div>
+        <div class="s">in the selected range</div></div>
+      <div class="stat is-green"><div class="k">Emails sent</div><div class="v">${s.emailed.toLocaleString()}</div>
+        <div class="s">${pct(s.emailed, s.total)} of leads</div></div>
+      <div class="stat is-cyan"><div class="k">Unique opens</div><div class="v">${(s.opened || 0).toLocaleString()}</div>
+        <div class="s">${pct(s.opened || 0, s.emailed)} of sends</div></div>
+      <div class="stat is-cyan"><div class="k">Total opens</div><div class="v">${(s.total_opens || s.opened || 0).toLocaleString()}</div>
+        <div class="s">including repeat opens</div></div>
+      <div class="stat is-purple"><div class="k">Forms filled</div><div class="v">${s.forms_filled.toLocaleString()}</div>
+        <div class="s">${pct(s.forms_filled, s.total)} of leads</div></div>
+      <div class="stat is-orange"><div class="k">Replies</div><div class="v">${s.replies.toLocaleString()}</div>
+        <div class="s">${pct(s.replies, s.emailed)} of sends</div></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>Today's cycle</h2>
+      <span class="note">Limits reset at ${esc(q.reset_time || '11:00')}${q.auto_daily_run ? ' &middot; auto-runs at ' + esc(q.daily_run_time || '11:05') : ' &middot; automatic run off'}</span>
+    </div>
+    <div class="status">
+      <div class="status-card">
+        <div class="k">Emails today</div>
+        <div class="v">${q.emails_sent_today ?? 0} <span class="muted">/ ${q.email_limit ?? 10}</span></div>
+        ${meter(q.emails_sent_today ?? 0, q.email_limit ?? 10)}
+        <div class="s">${q.emails_remaining_today ?? 0} left today</div>
+      </div>
+      <div class="status-card">
+        <div class="k">Forms today</div>
+        <div class="v">${q.forms_submitted_today ?? 0} <span class="muted">/ ${q.form_limit ?? 100}</span></div>
+        ${meter(q.forms_submitted_today ?? 0, q.form_limit ?? 100)}
+        <div class="s">${q.forms_remaining_today ?? 0} left today</div>
+      </div>
+      <div class="status-card">
+        <div class="k">Queued</div>
+        <div class="v">${(q.pending_email ?? 0).toLocaleString()}</div>
+        <div class="s">leads still to email &middot; ${(q.pending_form ?? 0).toLocaleString()} forms pending</div>
+      </div>
+      <div class="status-card">
+        <div class="k">Agent</div>
+        <div class="v">${esc(o.agentStatus || 'Idle')}</div>
+        <div class="s">${q.extraction_needed ? 'Next cycle extracts a fresh batch' : 'Working through existing leads'}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>Outreach activity</h2>
+      <span class="note">${o.leads.length} record${o.leads.length === 1 ? '' : 's'} &middot; emailed or form-submitted</span>
+    </div>
+    <div class="table-card">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Company</th><th>Contact</th><th>Location</th><th>Type</th>
+          <th style="text-align:right;">Score</th>
+          <th>Email</th><th>Opened</th><th>Form</th><th>Replied</th>
+          <th style="text-align:right;">Last activity</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="footer">
+    <span>${esc(o.company)} &middot; Microdyne Hunter</span>
+    <span>Pipeline report &middot; ${esc(dateLong)}</span>
+  </div>
+</div>
+</body></html>`;
+}
+
+// Open the document and print once the fonts and logo have actually landed.
+function openReportPrintWindow(html){
+  const win = window.open('', '_blank');
+  if(!win){
+    showToast('Popup blocked', 'Allow popups for this site to download the PDF report', 'reply');
+    return null;
+  }
+  win.document.open();
   win.document.write(html);
   win.document.close();
-  setTimeout(()=>{ win.print(); }, 500);
+
+  let printed = false;
+  const go = () => {
+    if(printed) return;
+    printed = true;
+    try { win.focus(); win.print(); } catch(e){ /* the window may be gone */ }
+  };
+  // Fonts first so the type is right on the printed page, with a timeout
+  // in case the webfont never arrives.
+  if(win.document.fonts && win.document.fonts.ready){
+    win.document.fonts.ready.then(() => setTimeout(go, 120));
+  }
+  win.addEventListener('load', () => setTimeout(go, 400));
+  setTimeout(go, 2500);
+  return win;
+}
+
+function reportFilterLabels(){
+  const labels = [];
+  const activity = document.getElementById('rptFilterActivity');
+  const type = document.getElementById('rptFilterType');
+  const from = document.getElementById('rptFilterDateFrom');
+  const to = document.getElementById('rptFilterDateTo');
+  const search = document.getElementById('rptFilterSearch');
+  if(activity && activity.value && activity.value !== 'all'){
+    labels.push('Activity: ' + activity.options[activity.selectedIndex].text);
+  }
+  if(type && type.value) labels.push('Type: ' + type.options[type.selectedIndex].text);
+  if(from && from.value || to && to.value){
+    labels.push('Dates: ' + ((from && from.value) || 'start') + ' → ' + ((to && to.value) || 'today'));
+  }
+  if(search && search.value.trim()) labels.push('Search: ' + search.value.trim());
+  return labels;
+}
+
+async function downloadReportPDF(btn){
+  const source = (typeof _rptFiltered !== 'undefined' && _rptFiltered && _rptFiltered.length)
+    ? _rptFiltered
+    : _rptData.filter(l => l.email_sent || l.form_filled);
+  if(!source.length){
+    showToast('Nothing to export', 'No lead has been emailed or form-submitted in this view yet', 'reply');
+    return;
+  }
+  const restore = btn ? btn.innerHTML : null;
+  if(btn){ btn.disabled = true; btn.textContent = 'Preparing…'; }
+
+  try {
+    const [logo, status] = await Promise.all([
+      reportLogo(),
+      api('/api/status').catch(() => null),
+    ]);
+    const html = buildReportDocument({
+      company: 'Microdyne Engineering',
+      leads: source,
+      summary: {
+        total: _rptData.length,
+        emailed: _rptData.filter(l => l.email_sent).length,
+        opened: _rptData.filter(l => l.email_opened).length,
+        total_opens: _rptData.reduce((sum, l) => sum + (l.email_opened ? (l.open_count || 1) : 0), 0),
+        forms_filled: _rptData.filter(l => l.form_filled).length,
+        replies: _rptData.filter(l => l.replied).length,
+      },
+      quota: (status && status.quota) || {},
+      agentStatus: status && status.status === 'running'
+        ? 'Running' + (status.current_step ? ' · ' + status.current_step : '')
+        : 'Idle',
+      filters: reportFilterLabels(),
+      theme: readReportTheme(),
+      logo,
+      fontLinks: reportFontLinks(),
+    });
+    openReportPrintWindow(html);
+  } catch(e){
+    console.error('Report PDF failed:', e);
+    showToast('Export failed', e.message || 'Could not build the report', 'reply');
+  } finally {
+    if(btn){ btn.disabled = false; btn.innerHTML = restore; }
+  }
 }
 
 async function applyFormFilters(){
@@ -6088,59 +6480,41 @@ function chatGeneratePDF(btn){
   btn.disabled = true;
 
   setTimeout(()=>{
-    // Trigger the existing downloadReportPDF function
+    // Same builder as the Report page, so both PDFs look identical
     try {
-      // First load report data if not loaded
-      fetch('/api/report-data').then(r=>r.json()).then(data=>{
-        if(!data || !data.leads){ btn.innerHTML = 'No data'; return; }
-        const leads = data.leads.filter(l=>l.email_sent||l.form_filled);
-        if(!leads.length){ btn.innerHTML = 'No outreach data'; return; }
+      fetch('/api/report-data').then(r => r.json()).then(async data => {
+        if(!data || !data.leads){ btn.innerHTML = 'No data'; btn.disabled = false; return; }
+        const leads = data.leads.filter(l => l.email_sent || l.form_filled);
+        if(!leads.length){ btn.innerHTML = 'No outreach data'; btn.disabled = false; return; }
 
-        const dateStr = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
-        let tableRows = leads.map((l,i)=>
-          '<tr>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(i+1)+'</td>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;font-weight:600;">'+(l.company_name||'-')+'</td>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.contact_email||'-')+'</td>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;">'+(l.country||'-')+'</td>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;">'+(l.score||0)+'</td>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;color:'+(l.email_sent?'#3498db':'#999')+';">'+(l.email_sent?'Sent':'-')+'</td>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;color:'+(l.email_opened?'#2ecc71':'#999')+';">'+(l.email_opened?'Opened':'-')+'</td>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;color:'+(l.form_filled?'#2e86c1':'#999')+';">'+(l.form_filled?'Filled':'-')+'</td>'+
-          '<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px;text-align:center;color:'+(l.replied?'#e67e22':'#999')+';">'+(l.replied?'Replied':'-')+'</td>'+
-          '</tr>'
-        ).join('');
-
-        const html = '<!DOCTYPE html><html><head><title>Microdyne Engineering - Report</title>'+
-          '<style>body{font-family:Segoe UI,Arial,sans-serif;padding:40px;color:#2c3e50;}'+
-          'h1{color:#3498db;font-size:22px;margin-bottom:4px;}'+
-          '.sub{color:#7f8c8d;font-size:13px;margin-bottom:24px;}'+
-          '.summary{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap;}'+
-          '.s-item{background:#f0f7ff;border:1px solid #d6e9f8;border-radius:8px;padding:12px 20px;text-align:center;min-width:100px;}'+
-          '.s-item .v{font-size:22px;font-weight:700;color:#3498db;}.s-item .l{font-size:10px;color:#7f8c8d;margin-top:2px;}'+
-          'table{width:100%;border-collapse:collapse;margin-top:16px;}'+
-          'th{background:#3498db;color:#fff;padding:8px;font-size:11px;text-align:left;border:1px solid #217dbb;}</style></head><body>'+
-          '<h1>Microdyne Engineering - Pipeline Report</h1>'+
-          '<div class="sub">Generated on '+dateStr+'</div>'+
-          '<div class="summary">'+
-          '<div class="s-item"><div class="v">'+data.total+'</div><div class="l">Total Leads</div></div>'+
-          '<div class="s-item"><div class="v">'+data.emailed+'</div><div class="l">Emails Sent</div></div>'+
-          '<div class="s-item"><div class="v">'+(data.replies||0)+'</div><div class="l">Replies</div></div>'+
-          '<div class="s-item"><div class="v">'+data.forms_filled+'</div><div class="l">Forms Filled</div></div>'+
-          '</div>'+
-          '<table><thead><tr><th>#</th><th>Company</th><th>Email</th><th>Country</th><th>Score</th><th>Email</th><th>Opened</th><th>Form</th><th>Replied</th></tr></thead>'+
-          '<tbody>'+tableRows+'</tbody></table>'+
-          '<div style="margin-top:24px;font-size:11px;color:#aaa;text-align:center;">Microdyne Engineering | MicrodyneHunter v2 | '+dateStr+'</div>'+
-          '</body></html>';
-
-        const win = window.open('','_blank');
-        win.document.write(html);
-        win.document.close();
-        setTimeout(()=>{ win.print(); }, 600);
+        const [logo, status] = await Promise.all([
+          reportLogo(),
+          api('/api/status').catch(() => null),
+        ]);
+        openReportPrintWindow(buildReportDocument({
+          company: 'Microdyne Engineering',
+          leads,
+          summary: {
+            total: data.total || leads.length,
+            emailed: data.emailed || 0,
+            opened: data.opened || 0,
+            total_opens: data.total_opens || data.opened || 0,
+            forms_filled: data.forms_filled || 0,
+            replies: data.replies || 0,
+          },
+          quota: (status && status.quota) || {},
+          agentStatus: status && status.status === 'running'
+            ? 'Running' + (status.current_step ? ' \u00b7 ' + status.current_step : '')
+            : 'Idle',
+          filters: [],
+          theme: readReportTheme(),
+          logo,
+          fontLinks: reportFontLinks(),
+        }));
 
         btn.innerHTML = '<span style="color:#2ecc71;">&#10003;</span> PDF Ready!';
         btn.style.opacity = '1';
-        setTimeout(()=>{ btn.innerHTML = origText; btn.disabled = false; }, 3000);
+        setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
       });
     } catch(e){
       btn.innerHTML = 'Error: '+e.message;
