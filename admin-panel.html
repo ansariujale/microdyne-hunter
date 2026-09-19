@@ -124,6 +124,13 @@
   .divider{border:none;border-top:1px solid var(--border-soft);margin:20px 0;}
 
 
+  /* ── API key testing ── */
+  .key-row{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;}
+  .key-status{font-size:11.5px;line-height:1.5;}
+  .key-status.ok{color:var(--success);}
+  .key-status.bad{color:var(--danger);}
+  .key-status.busy{color:var(--text-dim);}
+
   /* ── AI generator panels ── */
   .ai-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;}
   .btn-ai{
@@ -438,6 +445,20 @@
         <div class="setting-group">
           <div class="setting-label">OpenRouter API Key (AI / Chatbot)</div>
           <input class="input" id="openRouterKey" placeholder="sk-or-v1-..." type="password">
+          <div class="key-row">
+            <button class="btn-mini" onclick="testKey('chat', this)">Test key</button>
+            <span class="key-status" id="keyStatusChat"></span>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">OpenRouter API Key (Keyword Generator)</div>
+          <input class="input" id="openRouterKeywordsKey" placeholder="sk-or-v1-... (optional)" type="password">
+          <div class="key-row">
+            <button class="btn-mini" onclick="testKey('keywords', this)">Test key</button>
+            <span class="key-status" id="keyStatusKeywords"></span>
+          </div>
+          <div class="hint">A separate key keeps keyword generation from eating the chatbot's
+            credit. Leave it empty to share the key above.</div>
         </div>
         <div class="setting-group">
           <div class="setting-label">Apollo API Key (Lead Enrichment)</div>
@@ -1041,6 +1062,30 @@ async function showCountryHistory(){
   document.getElementById('historyPanel').classList.add('show');
 }
 
+// ── Check a key against OpenRouter before relying on it ──
+// The balance is what runs out, so the reply says how much is left rather
+// than just "valid".
+async function testKey(which, btn){
+  const fieldId = which === 'keywords' ? 'openRouterKeywordsKey' : 'openRouterKey';
+  const out = document.getElementById(which === 'keywords' ? 'keyStatusKeywords' : 'keyStatusChat');
+  const typed = document.getElementById(fieldId).value.trim();
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Checking…';
+  out.className = 'key-status busy';
+  out.textContent = 'Asking OpenRouter…';
+  try {
+    // an empty field tests whatever is currently saved
+    const r = await api('/api/admin/test-key', {which, key: typed});
+    out.className = 'key-status ' + (r && r.ok ? 'ok' : 'bad');
+    out.textContent = (r && r.message) || 'Could not check the key.';
+  } catch(e){
+    out.className = 'key-status bad';
+    out.textContent = 'Could not reach the server: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
 async function api(path, data){
   const r = await fetch(path, {
     method:'POST',
@@ -1056,6 +1101,7 @@ async function saveSection(section){
   if(section==='apiKeys'){
     data.apifyKey = document.getElementById('apifyKey').value;
     data.openRouterKey = document.getElementById('openRouterKey').value;
+    data.openRouterKeywordsKey = document.getElementById('openRouterKeywordsKey').value;
     data.apolloKey = document.getElementById('apolloKey').value;
     data.anthropicKey = document.getElementById('anthropicKey').value;
     data.instantlyKey = document.getElementById('instantlyKey').value;
@@ -1123,6 +1169,7 @@ async function loadSettings(){
     if(d.error){ window.location.href='/admin'; return; }
     if(d.apifyKey) document.getElementById('apifyKey').value = d.apifyKey;
     if(d.openRouterKey) document.getElementById('openRouterKey').value = d.openRouterKey;
+    if(d.openRouterKeywordsKey) document.getElementById('openRouterKeywordsKey').value = d.openRouterKeywordsKey;
     if(d.apolloKey) document.getElementById('apolloKey').value = d.apolloKey;
     if(d.anthropicKey) document.getElementById('anthropicKey').value = d.anthropicKey;
     if(d.instantlyKey) document.getElementById('instantlyKey').value = d.instantlyKey;

@@ -149,6 +149,152 @@ def add_log(msg, level="info", category="system", data=None):
     logger.info(msg)
 
 
+# ═══════════════════════════════════════════════════════════════
+# HEALTH — what is and isn't working, in the words the admin needs
+# ═══════════════════════════════════════════════════════════════
+
+# down     = this part cannot do its job at all
+# degraded = it works, but worse than it should
+# ok       = fine
+_AI_REASONS = {
+    "out_of_credit": ("down", "AI credit exhausted",
+                      "The OpenRouter key has no credit left. Replace it in Admin Panel → API Keys."),
+    "invalid_key":   ("down", "AI key rejected",
+                      "OpenRouter rejected the key. Check it in Admin Panel → API Keys."),
+    "rate_limited":  ("degraded", "AI rate limited",
+                      "The AI provider is throttling requests. It should recover on its own."),
+    "model_unavailable": ("down", "AI model unavailable",
+                          "The configured model no longer exists. Set OPENROUTER_MODEL to a current one."),
+    "no_key":        ("down", "No AI key",
+                      "Add an OpenRouter key in Admin Panel → API Keys."),
+    "no_provider":   ("down", "No AI provider",
+                      "Add an OpenRouter, Gemini or Anthropic key in Admin Panel → API Keys."),
+    "request_failed": ("down", "AI request failed",
+                       "The last AI request failed. See the detail for what the provider said."),
+}
+
+
+def get_health() -> dict:
+    """Component-by-component state, worst first.
+
+    Written for someone deciding what to fix, so every entry says what is wrong
+    and where to go, not just that something is."""
+    import config
+    parts = []
+
+    # ── database ──
+    try:
+        from modules.database import db, get_total_leads
+        if not db:
+            parts.append({"key": "database", "status": "down", "label": "Database not connected",
+                          "detail": "No Supabase connection. Add the URL and key in Admin Panel → Database.",
+                          "fix": "Admin Panel → Database"})
+        else:
+            parts.append({"key": "database", "status": "ok", "label": "Database connected",
+                          "detail": f"{get_total_leads():,} leads stored."})
+    except Exception as e:
+        parts.append({"key": "database", "status": "down", "label": "Database error",
+                      "detail": str(e)[:200], "fix": "Admin Panel → Database"})
+
+    # ── assistant / AI ──
+    try:
+        from modules.ai_client import is_ai_available, get_ai_status, all_ai_status
+        statuses = all_ai_status()
+        if not is_ai_available():
+            parts.append({"key": "ai", "status": "down", "label": "No AI provider",
+                          "detail": "The assistant and keyword generator need an API key.",
+                          "fix": "Admin Panel → API Keys"})
+        else:
+            failed = [(p, s) for p, s in statuses.items() if not s.get("ok")]
+            if failed:
+                purpose, state = failed[0]
+                level, label, detail = _AI_REASONS.get(
+                    state.get("reason", ""),
+                    ("down", "AI not working", state.get("detail", "")))
+                which = "Keyword generator" if purpose == "keywords" else "Assistant"
+                parts.append({"key": "ai", "status": level, "label": f"{which}: {label}",
+                              "detail": state.get("detail") or detail,
+                              "hint": detail, "fix": "Admin Panel → API Keys",
+                              "reason": state.get("reason", "")})
+            elif statuses:
+                model = next((s.get("model") for s in statuses.values() if s.get("model")), "")
+                parts.append({"key": "ai", "status": "ok", "label": "Assistant ready",
+                              "detail": f"Last reply came from {model}." if model else "Working."})
+            else:
+                parts.append({"key": "ai", "status": "ok", "label": "AI key configured",
+                              "detail": "Not called yet this run."})
+    except Exception as e:
+        parts.append({"key": "ai", "status": "down", "label": "AI check failed",
+                      "detail": str(e)[:200], "fix": "Admin Panel → API Keys"})
+
+    # ── email sending ──
+    try:
+        if _email_sending_configured():
+            parts.append({"key": "email", "status": "ok", "label": "Email sending ready",
+                          "detail": "An SMTP or Instantly account is configured."})
+        else:
+            pending = 0
+            try:
+                from modules.database import get_pending_email_count
+                pending = get_pending_email_count()
+            except Exception:
+                pass
+            parts.append({"key": "email", "status": "down", "label": "Email sending not configured",
+                          "detail": (f"{pending:,} leads are waiting and none can be emailed. "
+                                     "Add SMTP or Instantly credentials."),
+                          "fix": "Admin Panel → Email & SMTP"})
+    except Exception as e:
+        parts.append({"key": "email", "status": "down", "label": "Email check failed",
+                      "detail": str(e)[:200], "fix": "Admin Panel → Email & SMTP"})
+
+    # ── lead sourcing ──
+    apify = (getattr(config, "APIFY_API_KEY", "") or "").strip()
+    if apify and "your" not in apify.lower():
+        parts.append({"key": "scraping", "status": "ok", "label": "Lead sourcing ready",
+                      "detail": "Google Maps extraction via Apify is available."})
+    else:
+        parts.append({"key": "scraping", "status": "degraded", "label": "Lead sourcing limited",
+                      "detail": ("No Apify key, so Google Maps is unavailable and extraction falls "
+                                 "back to web search — fewer and weaker leads."),
+                      "fix": "Admin Panel → API Keys"})
+
+    order = {"down": 0, "degraded": 1, "ok": 2}
+    parts.sort(key=lambda p: order.get(p["status"], 3))
+    down = [p for p in parts if p["status"] == "down"]
+    degraded = [p for p in parts if p["status"] == "degraded"]
+
+    if down:
+        overall, headline = "down", down[0]["label"]
+    elif degraded:
+        overall, headline = "degraded", degraded[0]["label"]
+    else:
+        overall, headline = "ok", "Everything working"
+
+    return {
+        "status": overall,
+        "headline": headline,
+        "down": len(down),
+        "degraded": len(degraded),
+        "components": parts,
+    }
+
+
+_health_cache = {"at": 0.0, "data": None}
+
+
+def get_cached_health(max_age: float = 20.0) -> dict:
+    """Health for the dashboard poll, without re-querying on every tick."""
+    if _health_cache["data"] is None or time.time() - _health_cache["at"] > max_age:
+        try:
+            _health_cache["data"] = get_health()
+            _health_cache["at"] = time.time()
+        except Exception as e:
+            logger.warning(f"Health check failed: {e}")
+            return _health_cache["data"] or {"status": "unknown", "headline": "Health unknown",
+                                             "down": 0, "degraded": 0, "components": []}
+    return _health_cache["data"]
+
+
 def _persist_env(var: str, value) -> None:
     """Set an env var for this process and write it back to .env."""
     import re
@@ -1784,8 +1930,12 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 "completed_phases": agent_state.get("completed_phases", []),
                 "daily_reset_notice": agent_state.get("daily_reset_notice"),
                 "notice": current_agent_notice(),
+                "health": get_cached_health(),
                 "quota": get_cached_quota(),
             })
+
+        elif path == "/api/health":
+            self._json_response(get_health())
 
         elif path == "/api/logs":
             self._json_response({"logs": agent_state["log"][:50]})
@@ -2568,6 +2718,7 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
             self._json_response({
                 "apifyKey": os.getenv("APIFY_API_KEY", ""),
                 "openRouterKey": os.getenv("OPENROUTER_API_KEY", ""),
+                "openRouterKeywordsKey": os.getenv("OPENROUTER_API_KEY_KEYWORDS", ""),
                 "apolloKey": os.getenv("APOLLO_API_KEY", ""),
                 "anthropicKey": os.getenv("ANTHROPIC_API_KEY", ""),
                 "instantlyKey": os.getenv("INSTANTLY_API_KEY", ""),
@@ -2665,6 +2816,9 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 if section == "apiKeys":
                     if body.get("apifyKey"): _set_env("APIFY_API_KEY", body["apifyKey"]); config.APIFY_API_KEY = body["apifyKey"]
                     if body.get("openRouterKey"): _set_env("OPENROUTER_API_KEY", body["openRouterKey"]); config.OPENROUTER_API_KEY = body["openRouterKey"]
+                    if body.get("openRouterKeywordsKey"):
+                        _set_env("OPENROUTER_API_KEY_KEYWORDS", body["openRouterKeywordsKey"])
+                        config.OPENROUTER_API_KEY_KEYWORDS = body["openRouterKeywordsKey"]
                     if body.get("apolloKey"): _set_env("APOLLO_API_KEY", body["apolloKey"]); config.APOLLO_API_KEY = body["apolloKey"]
                     if body.get("anthropicKey"): _set_env("ANTHROPIC_API_KEY", body["anthropicKey"]); config.ANTHROPIC_API_KEY = body["anthropicKey"]
                     if body.get("instantlyKey"): _set_env("INSTANTLY_API_KEY", body["instantlyKey"]); config.INSTANTLY_API_KEY = body["instantlyKey"]
@@ -2887,6 +3041,19 @@ class AgentHTTPHandler(SimpleHTTPRequestHandler):
                 self._json_response({"status": "saved"})
             except Exception as e:
                 self._json_response({"error": str(e)}, 500)
+
+        elif path == "/api/admin/test-key":
+            if not _check_admin_token(self):
+                self._json_response({"error": "Unauthorized"}, 401)
+                return
+            from modules.ai_client import test_openrouter_key
+            import config
+            which = (body.get("which") or "chat").strip()
+            key = (body.get("key") or "").strip()
+            if not key:
+                key = (config.OPENROUTER_API_KEY_KEYWORDS if which == "keywords"
+                       else config.OPENROUTER_API_KEY) or ""
+            self._json_response(test_openrouter_key(key))
 
         elif path == "/api/admin/ai/keywords":
             if not _check_admin_token(self):

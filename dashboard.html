@@ -1238,6 +1238,69 @@
     .chat-fab{bottom:18px;right:18px;width:44px;height:44px;}
   }
 
+  /* ═══ HEALTH INDICATOR ═══
+     Says plainly when a part of the agent cannot do its job. */
+  .health-chip{
+    display:none;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:8px;
+    font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:500;letter-spacing:0.12em;
+    text-transform:uppercase;cursor:pointer;white-space:nowrap;flex-shrink:0;
+    border:1px solid transparent;transition:background 0.18s,border-color 0.18s;
+  }
+  .health-chip.show{display:inline-flex;}
+  .health-chip .hc-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .health-chip.is-down{background:var(--red-bg);border-color:var(--red-border);color:var(--red);}
+  .health-chip.is-down .hc-dot{background:var(--red);box-shadow:0 0 0 3px var(--red-bg);
+    animation:pulse 2s infinite;}
+  .health-chip.is-degraded{background:var(--orange-bg);border-color:var(--orange-border);color:var(--orange);}
+  .health-chip.is-degraded .hc-dot{background:var(--orange);box-shadow:0 0 0 3px var(--orange-bg);}
+  .health-chip:hover{filter:brightness(1.12);}
+
+  /* the banner that names what is broken */
+  .health-banner{
+    display:none;margin-bottom:14px;border-radius:13px;overflow:hidden;
+    border:1px solid var(--red-border);background:var(--surface);
+  }
+  .health-banner.show{display:block;animation:pageIn 0.3s cubic-bezier(.16,1,.3,1);}
+  .health-banner.degraded{border-color:var(--orange-border);}
+  .health-head{
+    display:flex;align-items:center;gap:11px;padding:13px 16px;cursor:pointer;
+    background:var(--red-bg);
+  }
+  .health-banner.degraded .health-head{background:var(--orange-bg);}
+  .health-head .hb-dot{width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0;
+    box-shadow:0 0 0 4px var(--red-bg);}
+  .health-banner.degraded .health-head .hb-dot{background:var(--orange);box-shadow:0 0 0 4px var(--orange-bg);}
+  .health-head .hb-title{font-size:13px;font-weight:600;color:var(--text);letter-spacing:-0.015em;flex:1;
+    min-width:0;}
+  .health-head .hb-count{font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.12em;
+    text-transform:uppercase;color:var(--text-dim);}
+  .health-head .hb-caret{color:var(--text-dim);transition:transform 0.22s;flex-shrink:0;}
+  .health-banner.open .health-head .hb-caret{transform:rotate(180deg);}
+  .health-body{display:none;padding:4px 16px 14px;}
+  .health-banner.open .health-body{display:block;}
+  .health-item{
+    display:flex;align-items:flex-start;gap:11px;padding:11px 0;
+    border-bottom:1px solid var(--row-border);
+  }
+  .health-item:last-child{border-bottom:none;}
+  .health-item .hi-dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+  .health-item.s-down .hi-dot{background:var(--red);}
+  .health-item.s-degraded .hi-dot{background:var(--orange);}
+  .health-item.s-ok .hi-dot{background:var(--cyan);}
+  .health-item .hi-body{flex:1;min-width:0;}
+  .health-item .hi-label{font-size:12.5px;font-weight:600;color:var(--text);letter-spacing:-0.012em;}
+  .health-item .hi-detail{font-size:11.5px;color:var(--text-muted);margin-top:3px;line-height:1.55;}
+  .health-item .hi-fix{
+    font-family:'Geist Mono',monospace;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;
+    color:var(--accent);text-decoration:none;white-space:nowrap;flex-shrink:0;margin-top:3px;
+    border:1px solid var(--accent-line);border-radius:7px;padding:5px 9px;
+  }
+  .health-item .hi-fix:hover{background:var(--accent-soft);}
+  @media(max-width:768px){
+    .health-item{flex-wrap:wrap;}
+    .health-item .hi-fix{margin-left:18px;}
+  }
+
 </style>
 </head>
 <body>
@@ -1295,6 +1358,9 @@
       <div class="dot demo" id="modeDot"></div>
       <span id="modeLabel">DEMO MODE</span>
     </div>
+    <button class="health-chip" id="healthChip" onclick="showHealth()" title="Something needs attention">
+      <span class="hc-dot"></span><span id="healthChipLabel">Checking</span>
+    </button>
     <div class="agent-status">
       <div class="pulse"></div>
       <span id="agentStatus">Agent Idle</span>
@@ -1370,6 +1436,16 @@
           <div class="hero-side"><span class="hero-pill"><span class="hp-dot"></span><span class="hp-k">Leads</span><span class="hp-v"><span id="heroPillLeads">0</span></span></span><span class="hero-pill"><span class="hp-dot"></span><span class="hp-k">Queued</span><span class="hp-v"><span id="heroPillQueue">0</span></span></span></div>
         </div>
       </header>
+      <div class="health-banner" id="healthBanner">
+        <div class="health-head" onclick="toggleHealth()">
+          <span class="hb-dot"></span>
+          <span class="hb-title" id="healthTitle"></span>
+          <span class="hb-count" id="healthCount"></span>
+          <svg class="hb-caret" width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="health-body" id="healthBody"></div>
+      </div>
       <div id="dailyResetNotice" class="alert alert-blue" style="display:none;margin-bottom:12px;"></div>
 
       <!-- CONSOLE + GAUGES -->
@@ -2724,6 +2800,63 @@ function renderAgentNotice(notice){
     el.classList.remove('show');
     _noticeTimer = null;
   }, Math.max(0, (notice.remaining ?? notice.seconds ?? 10) * 1000));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HEALTH — name what is not working, rather than failing quietly.
+// The poll carries it, so this costs no extra request.
+// ═══════════════════════════════════════════════════════════════
+let _healthSeen = '';
+
+function renderHealth(health){
+  const chip = document.getElementById('healthChip');
+  const banner = document.getElementById('healthBanner');
+  if(!chip || !banner || !health) return;
+
+  const broken = (health.down || 0) + (health.degraded || 0);
+  const level = health.status === 'down' ? 'is-down'
+              : health.status === 'degraded' ? 'is-degraded' : '';
+
+  chip.classList.toggle('show', broken > 0);
+  chip.classList.remove('is-down', 'is-degraded');
+  if(level) chip.classList.add(level);
+  document.getElementById('healthChipLabel').textContent =
+    health.status === 'down' ? 'Not working' : 'Degraded';
+  chip.title = health.headline || '';
+
+  banner.classList.toggle('show', broken > 0);
+  banner.classList.toggle('degraded', health.status === 'degraded');
+  document.getElementById('healthTitle').textContent = health.headline || '';
+  document.getElementById('healthCount').textContent =
+    health.down ? `${health.down} not working` + (health.degraded ? ` · ${health.degraded} limited` : '')
+                : (health.degraded ? `${health.degraded} limited` : '');
+
+  // only redraw the list when something actually changed
+  const signature = (health.components || [])
+    .map(c => c.key + ':' + c.status + ':' + c.label).join('|');
+  if(signature === _healthSeen) return;
+  _healthSeen = signature;
+
+  document.getElementById('healthBody').innerHTML = (health.components || []).map(c => `
+    <div class="health-item s-${c.status}">
+      <span class="hi-dot"></span>
+      <div class="hi-body">
+        <div class="hi-label">${c.label || ''}</div>
+        <div class="hi-detail">${c.detail || ''}</div>
+      </div>
+      ${c.fix ? `<a class="hi-fix" href="/admin" target="_blank">${c.fix.replace('Admin Panel → ', '')}</a>` : ''}
+    </div>`).join('');
+}
+
+function toggleHealth(){
+  document.getElementById('healthBanner').classList.toggle('open');
+}
+
+function showHealth(){
+  showPage('dashboard');
+  const banner = document.getElementById('healthBanner');
+  banner.classList.add('open');
+  banner.scrollIntoView({behavior:'smooth', block:'center'});
 }
 
 function renderDailyResetNotice(notice){
@@ -5253,6 +5386,7 @@ async function pollStatus(){
   if(!data) return;
   renderDailyResetNotice(data.daily_reset_notice);
   renderAgentNotice(data.notice);
+  renderHealth(data.health);
   renderQuota(data.quota);
   applyPreview();
   // Update agent status indicator

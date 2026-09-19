@@ -5,6 +5,7 @@ Unified AI interface. Priority: OpenRouter -> Gemini -> Anthropic -> None
 
 import logging
 import re
+import time
 
 import config
 from config import GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY
@@ -26,6 +27,26 @@ def _openrouter_key(purpose: str = "") -> str:
 
 _gemini_model = None
 _anthropic_client = None
+
+# The last outcome per purpose, so the dashboard can say the assistant is not
+# working instead of quietly serving canned replies.
+_ai_status: dict = {}
+
+
+def _note(purpose: str, ok: bool, reason: str = "", detail: str = "", model: str = ""):
+    _ai_status[purpose or "general"] = {
+        "ok": ok, "reason": reason, "detail": detail[:300], "model": model,
+        "at": time.time(),
+    }
+
+
+def get_ai_status(purpose: str = "") -> dict:
+    """How the last call for this kind of work went. Empty before the first call."""
+    return dict(_ai_status.get(purpose or "general", {}))
+
+
+def all_ai_status() -> dict:
+    return {k: dict(v) for k, v in _ai_status.items()}
 
 
 # Tried in order. The free model is first so the assistant works on an account
@@ -80,6 +101,7 @@ def _call_openrouter(prompt: str, max_tokens: int, system: str = None,
     """
     api_key = _openrouter_key(purpose)
     if not api_key:
+        _note(purpose, False, "no_key", "No OpenRouter key is configured.")
         return None
 
     messages = []
@@ -87,12 +109,15 @@ def _call_openrouter(prompt: str, max_tokens: int, system: str = None,
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
+    last_status, last_body, last_model = 0, "", ""
     for model in _openrouter_models():
         try:
             text, status, body = _openrouter_once(api_key, model, messages, max_tokens)
             if text:
+                _note(purpose, True, model=model)
                 return text
 
+            last_status, last_body, last_model = status, body, model
             if status == 402:
                 # Retry this model once within what the balance allows.
                 afford = _AFFORD.search(body)
@@ -101,6 +126,7 @@ def _call_openrouter(prompt: str, max_tokens: int, system: str = None,
                     logger.warning(f"[AI] {model}: trimming to {budget} tokens to fit the balance")
                     text, status, body = _openrouter_once(api_key, model, messages, budget)
                     if text:
+                        _note(purpose, True, model=model)
                         return text
                 logger.warning(f"[AI] {model}: out of credit, trying the next model")
                 continue
@@ -110,7 +136,12 @@ def _call_openrouter(prompt: str, max_tokens: int, system: str = None,
 
             logger.error(f"[AI] OpenRouter error {status} on {model}: {body}")
         except Exception as e:
+            last_status, last_body, last_model = 0, str(e), model
             logger.warning(f"[AI] {model} failed ({e}), trying the next model")
+
+    reason = {402: "out_of_credit", 429: "rate_limited", 401: "invalid_key",
+              403: "invalid_key", 404: "model_unavailable"}.get(last_status, "request_failed")
+    _note(purpose, False, reason, last_body or f"HTTP {last_status}", last_model)
     return None
 
 
@@ -164,9 +195,11 @@ def ai_generate(prompt: str, max_tokens: int = 2000, system: str = None,
                 config={"max_output_tokens": max_tokens, "temperature": 0.7},
             )
             text = response.text.strip()
+            _note(purpose, True, model="gemini-2.0-flash")
             return text
         except Exception as e:
             logger.error(f"[AI] Gemini error: {e}")
+            _note(purpose, False, "request_failed", str(e), "gemini-2.0-flash")
 
     # 3. Fallback to Anthropic
     anthropic_client = _get_anthropic()
@@ -177,11 +210,49 @@ def ai_generate(prompt: str, max_tokens: int = 2000, system: str = None,
             if system:
                 kwargs["system"] = system
             response = anthropic_client.messages.create(**kwargs)
+            _note(purpose, True, model=kwargs["model"])
             return response.content[0].text.strip()
         except Exception as e:
             logger.error(f"[AI] Anthropic error: {e}")
+            _note(purpose, False, "request_failed", str(e), kwargs.get("model", "anthropic"))
 
+    if not _ai_status.get(purpose or "general", {}).get("at"):
+        _note(purpose, False, "no_provider", "No AI provider is configured.")
     return None
+
+
+def test_openrouter_key(api_key: str) -> dict:
+    """Ask OpenRouter about a key without spending anything on a completion."""
+    api_key = (api_key or "").strip()
+    if not api_key:
+        return {"ok": False, "reason": "no_key", "message": "No key given."}
+    try:
+        import httpx
+        resp = httpx.get("https://openrouter.ai/api/v1/key",
+                         headers={"Authorization": f"Bearer {api_key}"}, timeout=25)
+        if resp.status_code in (401, 403):
+            return {"ok": False, "reason": "invalid_key",
+                    "message": "OpenRouter rejected this key."}
+        if resp.status_code != 200:
+            return {"ok": False, "reason": "request_failed",
+                    "message": f"OpenRouter returned {resp.status_code}."}
+        data = resp.json().get("data", {})
+        usage = data.get("usage")
+        limit = data.get("limit")
+        remaining = None if limit is None else round(limit - (usage or 0), 4)
+        free_tier = bool(data.get("is_free_tier"))
+        if remaining is not None and remaining <= 0:
+            return {"ok": False, "reason": "out_of_credit", "usage": usage, "limit": limit,
+                    "remaining": remaining, "free_tier": free_tier,
+                    "message": "This key has no credit left."}
+        where = "free tier" if free_tier else "paid"
+        spend = f"${usage:.4f} used" if usage is not None else "usage unknown"
+        left = f", ${remaining} left" if remaining is not None else ""
+        return {"ok": True, "reason": "valid", "usage": usage, "limit": limit,
+                "remaining": remaining, "free_tier": free_tier,
+                "message": f"Key works ({where}) — {spend}{left}."}
+    except Exception as e:
+        return {"ok": False, "reason": "request_failed", "message": f"Couldn't reach OpenRouter: {e}"}
 
 
 def is_ai_available(purpose: str = "") -> bool:
