@@ -4,6 +4,7 @@ Unified AI interface. Priority: OpenRouter -> Gemini -> Anthropic -> None
 """
 
 import logging
+import re
 
 import config
 from config import GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY
@@ -27,50 +28,89 @@ _gemini_model = None
 _anthropic_client = None
 
 
-OPENROUTER_MODEL_DEFAULT = "google/gemini-2.5-flash-lite"
+# Tried in order. The free model is first so the assistant works on an account
+# with no credits; the paid one is better and takes over once credits exist.
+# Override with OPENROUTER_MODEL (comma-separated for your own fallback chain).
+OPENROUTER_MODELS_DEFAULT = [
+    "deepseek/deepseek-v4-flash-0731:free",
+    "google/gemini-2.5-flash-lite",
+]
+
+# "you can only afford 1115" — OpenRouter reserves the whole max_tokens against
+# the balance, so a big ask fails even when the reply would be short.
+_AFFORD = re.compile(r"can only afford (\d+)")
 
 
-def _openrouter_model() -> str:
-    return (getattr(config, "OPENROUTER_MODEL", "") or "").strip() or OPENROUTER_MODEL_DEFAULT
+def _openrouter_models() -> list[str]:
+    configured = (getattr(config, "OPENROUTER_MODEL", "") or "").strip()
+    if configured:
+        return [m.strip() for m in configured.split(",") if m.strip()]
+    return list(OPENROUTER_MODELS_DEFAULT)
+
+
+def _openrouter_once(api_key: str, model: str, messages: list, max_tokens: int):
+    """One request. Returns (text, status_code, body)."""
+    import httpx
+    resp = httpx.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "model": model,
+            "max_tokens": max(64, min(max_tokens, 1500)),
+            "temperature": 0.7,
+            "messages": messages,
+        },
+        timeout=60,
+    )
+    if resp.status_code == 200:
+        try:
+            return resp.json()["choices"][0]["message"]["content"].strip(), 200, ""
+        except (KeyError, IndexError, ValueError) as e:
+            return None, 200, f"unreadable reply: {e}"
+    return None, resp.status_code, resp.text[:300]
 
 
 def _call_openrouter(prompt: str, max_tokens: int, system: str = None,
                      purpose: str = "") -> str | None:
-    """Call OpenRouter API (OpenAI-compatible endpoint)."""
+    """Call OpenRouter, working down the model list when one can't serve us.
+
+    A model can fail for reasons the next one won't share: no credit for that
+    price tier (402), rate limited (429), or retired (404). Falling through
+    keeps the assistant answering instead of dropping to canned replies.
+    """
     api_key = _openrouter_key(purpose)
     if not api_key:
         return None
-    try:
-        import httpx
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
 
-        resp = httpx.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                # Overridable; gemini-2.0-flash-001 was retired from OpenRouter
-                # and every call was coming back 404 "no endpoints found".
-                "model": _openrouter_model(),
-                "max_tokens": min(max_tokens, 1500),
-                "temperature": 0.7,
-                "messages": messages,
-            },
-            timeout=60,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            text = data["choices"][0]["message"]["content"].strip()
-            return text
-        else:
-            logger.error(f"[AI] OpenRouter error {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        logger.error(f"[AI] OpenRouter error: {e}")
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    for model in _openrouter_models():
+        try:
+            text, status, body = _openrouter_once(api_key, model, messages, max_tokens)
+            if text:
+                return text
+
+            if status == 402:
+                # Retry this model once within what the balance allows.
+                afford = _AFFORD.search(body)
+                budget = int(afford.group(1)) if afford else 0
+                if budget >= 64:
+                    logger.warning(f"[AI] {model}: trimming to {budget} tokens to fit the balance")
+                    text, status, body = _openrouter_once(api_key, model, messages, budget)
+                    if text:
+                        return text
+                logger.warning(f"[AI] {model}: out of credit, trying the next model")
+                continue
+            if status in (429, 404, 502, 503):
+                logger.warning(f"[AI] {model}: {status}, trying the next model")
+                continue
+
+            logger.error(f"[AI] OpenRouter error {status} on {model}: {body}")
+        except Exception as e:
+            logger.warning(f"[AI] {model} failed ({e}), trying the next model")
     return None
 
 

@@ -9,6 +9,7 @@ Dashboard opens at: http://localhost:8000
 import os
 import sys
 import json
+import re
 import time
 import base64
 import random
@@ -1042,12 +1043,13 @@ def handle_chat(user_message: str) -> str:
     """Process a user chat message. Direct data queries use DB fallback first (accurate).
     Complex/conversational questions go to AI."""
 
-    # ALWAYS use fallback first — it reads real DB data and gives accurate answers
-    # Only fall through to AI for truly conversational/complex questions
+    # Exact data lookups are answered from the database, because it counts
+    # reliably. Everything else goes to the assistant, which receives the same
+    # data as context. Matching loosely here is what made the assistant look
+    # broken: a question merely containing "email" never reached it.
     lower = user_message.lower()
-    result = _fallback_chat(user_message)
-    # If fallback gave a real answer (not the default help message), use it
-    if not result.startswith("**Ask me anything"):
+    result = _fallback_chat(user_message, precise_only=True)
+    if result and not result.startswith("**Ask me anything"):
         return result
 
     stats = agent_state["stats"]
@@ -1246,9 +1248,30 @@ def _get_deep_analytics() -> str:
     return "\n".join(lines)
 
 
-def _fallback_chat(msg: str) -> str:
-    """Smart fallback — pulls real DB data and gives direct answers."""
+def _fallback_chat(msg: str, precise_only: bool = False) -> str:
+    """Answers straight from the database.
+
+    `precise_only` keeps just the exact-lookup rules — counts, "who replied",
+    "list leads" — where the database is the authority and a model might
+    miscount. The broad topical rules below it match single common words like
+    "email" or "form", which would otherwise swallow every conversational
+    question before the assistant ever saw it, so they are reserved for when
+    the AI is unavailable.
+    """
     lower = msg.lower()
+    words = set(re.findall(r"[a-z]+", lower))
+
+    def w(*targets) -> bool:
+        """Whole word present. 'count' must not match inside 'country'."""
+        return any(t in words for t in targets)
+
+    def starts(*prefixes) -> bool:
+        """Any word starting with one of these — 'repl' covers reply/replied."""
+        return any(word.startswith(p) for word in words for p in prefixes)
+
+    def phrase(*targets) -> bool:
+        return any(t in lower for t in targets)
+
     stats = agent_state["stats"]
 
     # Load full lead data for answering any question
@@ -1276,21 +1299,21 @@ def _fallback_chat(msg: str) -> str:
         pass
 
     # PROJECT IDENTITY — answer about the app/project itself
-    if ("project" in lower and "name" in lower) or ("app" in lower and "name" in lower) or ("what is this" in lower):
+    if (w("project", "app") and w("name")) or phrase("what is this"):
         return "**MicrodyneHunter v2** — AI Sales Agent for Microdyne Engineering"
 
-    if "who made" in lower or "who built" in lower or "who created" in lower or "developer" in lower:
+    if phrase("who made", "who built", "who created") or w("developer"):
         return "**MicrodyneHunter v2** — built for Microdyne Engineering, Mumbai, India"
 
-    if ("company" in lower and "name" in lower) and ("my" in lower or "our" in lower):
+    if w("company") and w("name") and w("my", "our"):
         return "**Microdyne Engineering** — Mechanical Seals & Hydraulic Fittings, Mumbai"
 
-    if "version" in lower:
+    if w("version"):
         return "**MicrodyneHunter v2.0**"
 
     # DIRECT DATA QUERIES — return exact data, no fluff
     # Who replied / which email replied
-    if ("who" in lower or "which" in lower) and "repl" in lower:
+    if w("who", "which") and starts("repl"):
         replied_leads = [l for l in all_leads if l.get("replied")]
         if replied_leads:
             emails = "\n".join(f"• **{l['contact_email']}** ({l.get('company_name','?')})" for l in replied_leads)
@@ -1298,7 +1321,7 @@ def _fallback_chat(msg: str) -> str:
         return "No replies yet."
 
     # Who opened / which email opened
-    if ("who" in lower or "which" in lower) and "open" in lower:
+    if w("who", "which") and starts("open"):
         opened_leads = [l for l in all_leads if l.get("email_opened")]
         if opened_leads:
             emails = "\n".join(f"• **{l['contact_email']}** ({l.get('company_name','?')})" for l in opened_leads)
@@ -1306,7 +1329,7 @@ def _fallback_chat(msg: str) -> str:
         return "No opens tracked yet."
 
     # Which email was sent / who was emailed
-    if ("who" in lower or "which" in lower) and ("sent" in lower or "email" in lower):
+    if w("who", "which") and w("sent", "email", "emails", "emailed"):
         emailed = [l for l in all_leads if l.get("email_sent")]
         if emailed:
             emails = "\n".join(f"• **{l['contact_email']}** ({l.get('company_name','?')}) — score: {l.get('score',0)}" for l in emailed)
@@ -1314,14 +1337,14 @@ def _fallback_chat(msg: str) -> str:
         return "No emails sent yet."
 
     # Reply from / reply email
-    if "reply" in lower and ("from" in lower or "email" in lower or "who" in lower):
+    if w("reply", "replies") and w("from", "email", "emails", "who"):
         replied_leads = [l for l in all_leads if l.get("replied")]
         if replied_leads:
             return "\n".join(f"**{l['contact_email']}**" for l in replied_leads)
         return "No replies yet."
 
     # Hot leads — MUST be before "how many leads"
-    if "hot" in lower and "lead" in lower:
+    if w("hot") and w("lead", "leads"):
         from modules.database import get_hot_leads
         hot = get_hot_leads()
         if hot:
@@ -1333,7 +1356,7 @@ def _fallback_chat(msg: str) -> str:
         return "**0 hot leads** right now. Hot leads = replied, opened with score 70+, or interested."
 
     # Status / how's it going
-    if "status" in lower or ("how" in lower and "going" in lower):
+    if w("status") or phrase("how's it going", "how is it going", "how are things"):
         status = f"running (cycle {agent_state['cycle']})" if agent_state["agent_loop_running"] else "idle"
         return (f"**Agent: {status.upper()}**\n"
                 f"• Leads: **{db_nums['total']:,}** | Emailed: **{db_nums['emailed']:,}** | Opened: **{db_nums['opened']:,}**\n"
@@ -1341,31 +1364,36 @@ def _fallback_chat(msg: str) -> str:
                 f"• Closed: **{db_nums['closed']:,}**")
 
     # How many leads / total leads
-    if ("total" in lower or "how many" in lower or "count" in lower) and "lead" in lower:
+    if (w("total", "count") or phrase("how many")) and w("lead", "leads"):
         return f"**{db_nums['total']:,}** leads"
 
     # How many emails sent
-    if ("how many" in lower or "total" in lower) and ("email" in lower or "sent" in lower):
+    if (phrase("how many") or w("total")) and w("email", "emails", "emailed", "sent"):
         return f"**{db_nums['emailed']:,}** emails sent"
 
     # How many forms
-    if ("how many" in lower or "total" in lower) and "form" in lower:
+    if (phrase("how many") or w("total")) and w("form", "forms"):
         return f"**{db_nums['forms']:,}** forms ({db_nums['form_success']} success, {db_nums['form_failed']} failed)"
 
     # How many replies
-    if ("how many" in lower or "total" in lower) and "repl" in lower:
+    if (phrase("how many") or w("total")) and starts("repl"):
         return f"**{db_nums['replied']:,}** replies ({db_nums['reply_rate']}% rate)"
 
     # How many opened
-    if ("how many" in lower or "total" in lower) and "open" in lower:
+    if (phrase("how many") or w("total")) and starts("open"):
         return f"**{db_nums['opened']:,}** emails opened"
 
     # List all leads
-    if "list" in lower and "lead" in lower:
+    if w("list") and w("lead", "leads"):
         if all_leads:
             rows = "\n".join(f"• **{l['company_name']}** — {l.get('contact_email','?')} ({l.get('country','?')}) score={l.get('score',0)}" for l in all_leads[:20])
             return f"**{db_nums['total']} leads:**\n{rows}"
         return "No leads in database."
+
+    # Everything below matches on a single common word, so it is only right
+    # when there is no assistant to answer properly.
+    if precise_only:
+        return ""
 
     # Form status
     if "form" in lower:
